@@ -96,38 +96,38 @@ function skip(wc::WordCombination, word::String)
     return word in wc || length(setdiff(word, wc.chars)) != 5
 end
 
-
 function find_word_combo!(hits::Set{WordCombination}, wordlist::Vector{String})
     wc = WordCombination()
-    p = Progress(length(wordlist); showspeed=true)
+    # p = Progress(length(wordlist); showspeed=true)
     spinlock = Threads.SpinLock()
-    Threads.@threads for (i, a) in enumerate(wordlist)
+    @showprogress "Searching..." for (i, a) in enumerate(wordlist)
         skip(wc, a) && continue
         wca = union(wc, a)
-        for (j, b) in enumerate(@view wordlist[i:end])
+        Threads.@threads for (j, b) in collect(enumerate(@view wordlist[(i+1):end]))
             skip(wca, b) && continue
             wcb = union(wca, b)
-            for (k, c) in enumerate(@view wordlist[j:end])
+            for (k, c) in enumerate(@view wordlist[(j+1):end])
                 skip(wcb, c) && continue
-                wcc = union(wcb, a)
-                for (l, d) in enumerate(@view wordlist[k:end])
+                wcc = union(wcb, c)
+                for (l, d) in enumerate(@view wordlist[(k+1):end])
                     skip(wcc, d) && continue
                     wcd = union(wcc, d)
-                    for (m, e) in enumerate(@view wordlist[l:end])
+                    for e in @view wordlist[(l+1):end]
                         skip(wcd, e) && continue
                         wce = union(wcd, e)
                         # @info wce
-                        lock(spinlock)
-                        push!(hits, wce)
-                        unlock(spinlock)
+                        lock(spinlock) do
+                            return push!(hits, wce)
+                        end
+                        # unlock(spinlock)
                     end
                 end
             end
         end
-        next!(p)
+
     end
 
-    finish!(p)
+    # finish!(p)
 
     return hits
 end
