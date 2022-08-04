@@ -1,0 +1,11 @@
+name = "FiveLetterWorda"
+uuid = "40c3fe41-db9e-4ab5-a060-da035752fe98"
+authors = ["Phillip Alday <me@phillipalday.com>"]
+version = "0.1.0"
+
+[deps]
+Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
+Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+Scratch = "6c6a2e73-6563-6170-7368-637461726353"
+ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
