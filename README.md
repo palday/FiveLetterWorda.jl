@@ -5,7 +5,7 @@ Inspired by: https://github.com/standupmaths/fiveletterworda/
 See also a similar idea done in Python: https://gitlab.com/bpaassen/five_clique
 
 This is a moderately optimized Julia program. We could probably optimize things a bit more, but it doesn't seem worth the effort. We use views throughout in order to reduce allocations and access arrays in column-major order.
-(Unlike NumPy, Julia is column-major.)
+(Unlike NumPy, Julia is column-major.) The adjacency matrix is sorted by degree, so that higher degree nodes are searched later. This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candiate is non viable sooner.
 
 Here's a worst-case timing run (clean run in a new session, so you the just-ahead-of-time compilation is included in the timings):
 
