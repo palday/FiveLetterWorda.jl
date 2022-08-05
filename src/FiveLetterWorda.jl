@@ -86,89 +86,39 @@ remove_anagrams(words::Vector{String}) = unique(Set, words)
 
 function main()
     words = remove_anagrams(load_data())
+    # remove words with repeated letters
     words = filter(x -> length(Set(x)) == 5, words)
-    hits = sizehint!(Set{WordCombination}(), 538)
-    find_word_combo!(hits, words)
-    return hits
+    pairs = skipmissing(maybe_wc(c) for c in combinations(words, 2))
+    triples = skipmissing(maybe_push(wc, w) for (wc, w) in product(pairs, words))
+    quads = skipmissing(maybe_push(wc, w) for (wc, w) in product(triples, words))
+    quints = skipmissing(maybe_push(wc, w) for (wc, w) in product(quads, words))
+    return (; words, pairs, triples, quads, quints)
+    # return collect(quints)
+    # pairs = @showprogress asyncmap(maybe_wc, combinations(words, 2); ntasks=Threads.nthreads()÷2)
+    # filter!(!ismissing, pairs)
+    # triples = @showprogress asyncmap((wc, w) -> maybe_push(wc, w), product(pairs, words); ntasks=Threads.nthreads() ÷ 2)
+    # hits = sizehint!(Set{WordCombination}(), 538)
+    # find_word_combo!(hits, words)
+    # return hits
 end
 
-function skip(wc::WordCombination, word::String)
-    return word in wc || length(setdiff(word, wc.chars)) != 5
-end
-
-function find_word_combo!(hits::Set{WordCombination}, wordlist::Vector{String})
-    wc = WordCombination()
-    # p = Progress(length(wordlist); showspeed=true)
-    spinlock = Threads.SpinLock()
-    @showprogress "Searching..." for (i, a) in enumerate(wordlist)
-        skip(wc, a) && continue
-        wca = union(wc, a)
-        Threads.@threads for (j, b) in collect(enumerate(@view wordlist[(i+1):end]))
-            skip(wca, b) && continue
-            wcb = union(wca, b)
-            for (k, c) in enumerate(@view wordlist[(j+1):end])
-                skip(wcb, c) && continue
-                wcc = union(wcb, c)
-                for (l, d) in enumerate(@view wordlist[(k+1):end])
-                    skip(wcc, d) && continue
-                    wcd = union(wcc, d)
-                    for e in @view wordlist[(l+1):end]
-                        skip(wcd, e) && continue
-                        wce = union(wcd, e)
-                        # @info wce
-                        lock(spinlock) do
-                            return push!(hits, wce)
-                        end
-                        # unlock(spinlock)
-                    end
-                end
-            end
-        end
-
+function maybe_wc(w::Vector{String})
+    chars = Set(w[1])
+    for i in 2:length(w)
+        length(union!(chars, Set(w[i]))) == 5i || return missing
     end
-
-    # finish!(p)
-
-    return hits
+    return WordCombination(chars, Set(w))
 end
 
-# great way that results in a stack overflow
-# function find_word_combo!(hits::Set{WordCombination}, wc::WordCombination, wordlist::Vector{String}, idx::Int=1)
-#     # idx > 10 && return
-#     word = wordlist[idx]
-#     # word in wc && error("got a repeat! $(wc), $(idx)")
+export maybe_wc
 
-#     chars = Set(word)
-#     # this depends on no words having duplicate letters
-#     wc = length(setdiff(chars, wc.chars)) == 5 ? wc : union(wc, word)
-#     # wc = length(setdiff(chars, wc.chars)) == 5 ? wc : union(wc, word)
-#     if nwords(wc) == 2
-#         @info wc
-#         # push!(hits, wc)
-#         return nothing
-#     end
+function maybe_push(wc::WordCombination, w::String)
+    w in wc && return missing
+    chars = union(wc.chars, w)
+    length(chars) != nchars(wc) + length(w) && return missing
+    return WordCombination(chars, union(wc.words, [w]))
+end
 
-#     # notice the type restriction on wordlist before judging my indexing
-#     Threads.@threads for i in (idx+1):length(wordlist)
-#         find_word_combo!(hits, wc, wordlist, i)
-#     end
-#     return nothing
-# end
-
-# function find_word_combo(wc::WordCombination, wordlist::AbstractVector{String},
-#                          mask::BitVector=BitVector(true for _ in wordlist))
-#     isempty(wordlist) && return nothing
-#     nwords(wc) == 2 && return wc
-
-#     newmask = copy(mask)
-#     for i in eachindex(newmask)
-#         newmask[i] || continue
-#         word = wordlist[i]
-#         find_word_combo(union(wc, word), wordlist, newmask)
-#         newmask[i] = false
-#     end
-#     @show wc
-#     return nothing
-# end
+export maybe_push
 
 end # module
