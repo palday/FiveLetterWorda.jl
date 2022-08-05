@@ -93,11 +93,14 @@ Words: birch, fldxt, gawky, numps, vejoz
 
 We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
 
-If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit:
+If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (run time almost doubles):
 
 ```julia
 julia> @time begin
        using FiveLetterWorda
        (; adj, words, combinations) = main()
        end;
+Computing adjacency matrix... 100%|█████████████████████████████████████████████████████████████████████████| Time: 0:00:08
+Finding cliques... 100%|██████████████████████████████████████████████████████████████████████| Time: 0:13:36 ( 0.14  s/it)
+830.438873 seconds (194.84 M allocations: 51.953 GiB, 0.41% gc time, 0.73% compilation time)
 ```
