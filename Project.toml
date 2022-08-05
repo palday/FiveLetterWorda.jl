@@ -5,8 +5,9 @@ version = "0.1.0"
 
 [deps]
 Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
-Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
