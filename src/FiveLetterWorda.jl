@@ -130,6 +130,13 @@ shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
 # TODO: turn this into a recursive call that allows find cliques of order n
 function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     empty!(results)
+    # sorting by degree so that more interconnected words come later
+    # really really improves performance
+    deg = sum(eachrow(adj))
+    deg_sort = sortperm(deg; rev=false)
+    adj = adj[deg_sort, deg_sort]
+    wordlist = wordlist[deg_sort]
+
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
