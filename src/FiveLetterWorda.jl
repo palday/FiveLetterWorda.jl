@@ -63,6 +63,24 @@ end
 
 _fname() = joinpath(CACHE[], "words_alpha.arrow")
 
+# the zipped version is far smaller so we download that for speed
+# it is missing a few things in the current unzipped file, but
+# none that are 5 letters long
+# diff words_alpha.txt words_alpha.zip.txt
+# 561d560
+# < abled
+# 1440a1440
+# > acceleratorh
+# 73224d73223
+# < cryptocurrency
+# 198697d198695
+# < nerdy
+# 298304,298306d298301
+# < spam
+# < spammed
+# < spamming
+# 327928d327922
+# < transgender
 function download_data()
     @info "Downloading data"
     open(Downloads.download(WORD_ZIP_URL), "r") do io
@@ -86,6 +104,11 @@ end
 
 remove_anagrams(words::Vector{String}) = unique(Set, words)
 
+# TODO: expose constraint on word length
+# FIXME: do we really want to remove anagrams?
+# FIXME: if we are going to remove anagrams, should we select the
+#        representative of that equivalence class in some other way
+#        than "whatever was first in the file"?
 function main()
     words = remove_anagrams(load_data())
     # remove words with repeated letters
@@ -103,6 +126,7 @@ function num_shared_neigbors(r1, r2, start=1)
 end
 shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
 
+# TODO: turn this into a recursive call that allows find cliques of order n
 function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     ll = Threads.SpinLock()
     ncols = size(adj, 2)
