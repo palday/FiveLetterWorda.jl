@@ -3,6 +3,7 @@ module FiveLetterWorda
 using Arrow
 using Downloads
 using LinearAlgebra
+using Polyester
 using ProgressMeter
 using Scratch
 using ZipFile
@@ -128,10 +129,10 @@ shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
 
 # TODO: turn this into a recursive call that allows find cliques of order n
 function cliques!(results::Vector{Vector{String}}, adj, wordlist)
-    ll = Threads.SpinLock()
+    empty!(results)
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
-    Threads.@threads for i in 1:ncols
+    @batch per=thread threadlocal=copy(results) for i in 1:ncols
         ri = @view(adj[:, i])
         for j in (i+1):ncols
             ri[j] || continue
@@ -153,9 +154,7 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
                     rl = shared_neighbors(rk, rl)
                     rr = wordlist[[i, j, k, l]]
                     append!(rr, view(wordlist, rl))
-                    lock(ll) do
-                        return push!(results, rr)
-                    end
+                    push!(threadlocal, rr)
                 end
             end
         end
@@ -163,6 +162,12 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     end
 
     finish!(p)
+    sizehint!(results, sum(length, threadlocal))
+    for th in threadlocal
+        append!(results, th)
+    end
+
+    @info "$(length(results)) combinations found"
     return results
 end
 
