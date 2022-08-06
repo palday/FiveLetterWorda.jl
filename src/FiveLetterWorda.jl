@@ -255,8 +255,7 @@ function main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix)
         words = remove_anagrams(words)
     end
     adj = adjacency_matrix(words, adjacency_matrix_type)
-    sets = Vector{Vector{String}}()
-    cliques!(sets, adj, words)
+    sets = cliques(adj, words)
     return (; adj, words, combinations=WordCombination.(sets))
 end
 
@@ -296,8 +295,30 @@ end
 
 shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .* @view(r2[start:end])
 
-# TODO: turn this into a recursive call that allows find cliques of order n
+"""
+    cliques(adj, wordlist)
+
+Find all five-cliques in the adjacency matrix `adj`.
+
+The cliques are interpreted as entries in `wordlist` (so the adjacency
+matrix should reflect the same ordering as `wordlist`) and the results
+are then returned as the relevant words.
+"""
+cliques(adj, wordlist) = cliques!(Vector{Vector{String}}(), adj, wordlist)
+
+"""
+    cliques!(results::Vector{Vector{String}}, adj, wordlist)
+
+Find all five-cliques in the adjacency matrix `adj`, storing the
+result in `results`.
+
+!!! warn
+    `result` is emptied before being populated.
+
+See also [`cliques`](@ref)
+"""
 function cliques!(results::Vector{Vector{String}}, adj, wordlist)
+# TODO: turn this into a recursive call that allows find cliques of order n
     empty!(results)
     # sorting by degree so that more interconnected words come later
     # really really improves performance
