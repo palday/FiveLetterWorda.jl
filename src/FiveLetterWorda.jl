@@ -3,6 +3,7 @@ module FiveLetterWorda
 using Arrow
 using Downloads
 using LinearAlgebra
+using LoopVectorization
 using Polyester
 using ProgressMeter
 using Scratch
@@ -293,6 +294,19 @@ function num_shared_neighbors(r1, r2, start=1)
     return s
 end
 
+const BoolRowView = SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
+
+function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
+    # this method is specialized on row-views of Matrix{Bool}
+    # and takes advantage of LoopVectorization.@turbo for SIMD instructions
+    s = 0
+    length(r1) == length(r2) || throw(DimensionMismatch())
+    @turbo for i in start:length(r1)
+        s += r1[i] * r2[i]
+    end
+    return s
+end
+
 shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .* @view(r2[start:end])
 
 """
@@ -387,9 +401,12 @@ function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
     fill!(adj, false) # init the diagonal; everything else is overwritten
     # fill!(view(adj, diagind(adj)), true)
     @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
-        adj[i, j] = good_pair(words[i], words[j])
+        adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
     end
-    return Symmetric(adj, :L)
+    # why not make this Symmetric()? well, we don't do anything with methods
+    # specialized on Symmetric and the view-based access pattern is slower
+    # in some circumstances
+    return adj
 end
 
 function good_pair(w1::String, w2::String)
