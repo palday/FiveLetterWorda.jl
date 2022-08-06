@@ -8,8 +8,9 @@ using ProgressMeter
 using Scratch
 using ZipFile
 
-export main, WordCombination, nwords, nchars
-export adjacency_matrix, cliques!, five_letter_words
+export main, WordCombination, nwords, nchars,
+       adjacency_matrix, cliques!, five_letter_words,
+       remove_anagrams, write_tab
 
 const CACHE = Ref("")
 const WORD_ZIP_URL = "https://github.com/dwyl/english-words/raw/master/words_alpha.zip"
@@ -193,6 +194,17 @@ function load_data()
     filter!(x -> length(x) == 5, words)
 end
 
+"""
+    remove_anagrams(words::Vector{String})
+
+Remove all anagrams from `words`.
+
+This reduces the set of words to the set of equivalence classes under the
+operation "anagram". The representative member from each class is just the
+first word encountered from that class. If the vector is sorted
+lexicographically, then this is just the anagram that comes first in the
+alphabet.
+"""
 remove_anagrams(words::Vector{String}) = unique(Set, words)
 
 """
@@ -200,11 +212,10 @@ remove_anagrams(words::Vector{String}) = unique(Set, words)
 
 Return the set of five-letter words containing five unique letters.
 
-Technically, this returns the equivlance classes, i.e., it removes
-all anagrams and leaves one word per anagram equivalence class.
+Use [`remove_anagrams`](@ref) to remove anagrams.
 """
 function five_letter_words()
-    words = remove_anagrams(load_data())
+    words = load_data()
     # remove words with repeated letters
     words = filter(x -> length(Set(x)) == 5, words)
     return words
@@ -215,12 +226,28 @@ end
 #####
 
 # TODO: expose constraint on word length
-# FIXME: do we really want to remove anagrams?
-# FIXME: if we are going to remove anagrams, should we select the
-#        representative of that equivalence class in some other way
-#        than "whatever was first in the file"?
-function main()
+"""
+    main(; exclude_anagrams=true)
+
+Do everything. 😉
+
+Find the set of five five-letter words where each group of five words has
+no shared letters between words.
+
+If `exclude_anagrams=true`, then anagrams are removed from the word list
+before finding the result.
+
+Returns a named tuple of containing
+- the adjacency matrix `adj` of words, i.e. the matrix of indicators for
+  whether a given pair of words have no letters in common
+- the vector of words used `words`
+- the vector of [`WordCombination`](@ref)s found.
+"""
+function main(; exclude_anagrams=true)
     words = five_letter_words()
+    if exclude_anagrams
+        words = remove_anagrams(words)
+    end
     adj = adjacency_matrix(words)
     sets = Vector{Vector{String}}()
     cliques!(sets, adj, words)
@@ -228,9 +255,17 @@ function main()
 end
 
 function write_tab(fname, wcs::Vector{WordCombination})
-    return write_tab(fname, getproperty.(wcs, :words))
+    # XXX this is very inefficient but nothing here is so huge in memory
+    # that I'm really worried about it
+    return write_tab(fname, collect.(getproperty.(wcs, :words)))
 end
 
+"""
+    write_tab(fname, wcs::Vector{Vector{String}})
+    write_tab(fname, wcs::Vector{WordCollection})
+
+Write the results out to a tab delimited file.
+"""
 function write_tab(fname, wcs::Vector{Vector{String}})
     wcs = sort!(sort.(wcs))
     open(fname, "w") do io
@@ -243,6 +278,8 @@ function write_tab(fname, wcs::Vector{Vector{String}})
 end
 
 function num_shared_neighbors(r1, r2, start=1)
+    # this is an efficient, non allocating way to
+    # compute the number of elements in the intersection
     s = 0
     length(r1) == length(r2) || throw(DimensionMismatch())
     @inbounds for i in start:length(r1)
