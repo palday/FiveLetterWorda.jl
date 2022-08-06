@@ -227,10 +227,28 @@ function main()
     return (; adj, words, combinations=WordCombination.(sets))
 end
 
-function num_shared_neigbors(r1, r2, start=1)
-    return count(zip(@view(r1[start:end]), @view(r2[start:end]))) do x
-        return x[1] & x[2]
+function write_tab(fname, wcs::Vector{WordCombination})
+    return write_tab(fname, getproperty.(wcs, :words))
+end
+
+function write_tab(fname, wcs::Vector{Vector{String}})
+    wcs = sort!(sort.(wcs))
+    open(fname, "w") do io
+        for combi in wcs
+            println(io, join(combi, "\t"))
+        end
+        return nothing
     end
+    return nothing
+end
+
+function num_shared_neighbors(r1, r2, start=1)
+    s = 0
+    length(r1) == length(r2) || throw(DimensionMismatch())
+    @inbounds for i in start:length(r1)
+        s += r1[i] * r2[i]
+    end
+    return s
 end
 
 shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
@@ -248,28 +266,32 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
+    # for i in 1:ncols
         ri = @view(adj[:, i])
         for j in (i+1):ncols
             ri[j] || continue
             rj = @view(adj[:, j])
-            num_shared_neigbors(ri, rj, j) < 3 && continue
+            num_shared_neighbors(ri, rj, j) < 3 && continue
             # only allocate if useful
             rj = shared_neighbors(ri, rj)
             for k in (j+1):ncols
                 rj[k] || continue
                 rk = @view(adj[:, k])
-                num_shared_neigbors(rj, rk, k) < 2 && continue
+                num_shared_neighbors(rj, rk, k) < 2 && continue
                 # only allocate if useful
                 rk = shared_neighbors(rj, rk)
                 for l in (k+1):ncols
                     rk[l] || continue
                     rl = @view(adj[:, l])
-                    num_shared_neigbors(rk, rl, l) < 1 && continue
+                    num_shared_neighbors(rk, rl, l) < 1 && continue
                     # only allocate if useful
                     rl = shared_neighbors(rk, rl)
-                    rr = wordlist[[i, j, k, l]]
-                    append!(rr, view(wordlist, rl))
-                    push!(threadlocal, rr)
+                    ws = view(wordlist, rl)
+                    for w in ws
+                        rr = wordlist[[i, j, k, l]]
+                        push!(rr, w)
+                        push!(threadlocal, rr)
+                    end
                 end
             end
         end
@@ -291,9 +313,9 @@ function adjacency_matrix(words)
     fill!(adj, false) # init the diagonal; everything else is overwritten
     # fill!(view(adj, diagind(adj)), true)
     @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
-        adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
+        adj[i, j] = good_pair(words[i], words[j])
     end
-    return Symmetric(adj)
+    return Symmetric(adj, :L)
 end
 
 function good_pair(w1::String, w2::String)
