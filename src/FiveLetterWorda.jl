@@ -366,8 +366,9 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
                     rl = shared_neighbors(rk, rl)
                     ws = view(wordlist, rl)
                     for w in ws
-                        rr = wordlist[[i, j, k, l]]
-                        push!(rr, w)
+                        rr = similar(wordlist, 5)
+                        rr[1:4] .= view(wordlist, [i, j, k, l])
+                        rr[5] = w
                         push!(threadlocal, rr)
                     end
                 end
