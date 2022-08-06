@@ -10,7 +10,7 @@ using Scratch
 using ZipFile
 
 export main, WordCombination, nwords, nchars,
-       adjacency_matrix, cliques!, five_letter_words,
+       adjacency_matrix, cliques, cliques!, five_letter_words,
        remove_anagrams, write_tab
 
 const CACHE = Ref("")
@@ -228,7 +228,7 @@ end
 
 # TODO: expose constraint on word length
 """
-    main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix)
+    main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix, order=5)
 
 Do everything. 😉
 
@@ -244,19 +244,24 @@ packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
 byte and is thus 8 times as large, but noticably faster.
 See also [`adjacency_matrix`](@ref)
 
+The `order` specifies the order of cliques to find and default to 5
+(the maximum possible order for 5 letter words.) Note that cliques of lower
+order are more common, so there are **many** more of them.
+
 Returns a named tuple of containing
 - the adjacency matrix `adj` of words, i.e. the matrix of indicators for
   whether a given pair of words have no letters in common
 - the vector of words used `words`
 - the vector of [`WordCombination`](@ref)s found.
 """
-function main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix)
+function main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix,
+              order=5)
     words = five_letter_words()
     if exclude_anagrams
         words = remove_anagrams(words)
     end
     adj = adjacency_matrix(words, adjacency_matrix_type)
-    sets = cliques(adj, words)
+    sets = cliques(adj, words, order)
     return (; adj, words, combinations=WordCombination.(sets))
 end
 
@@ -310,7 +315,7 @@ end
 shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .* @view(r2[start:end])
 
 """
-    cliques(adj, wordlist)
+    cliques(adj, wordlist, order=5)
 
 Find all five-cliques in the adjacency matrix `adj`.
 
@@ -318,10 +323,11 @@ The cliques are interpreted as entries in `wordlist` (so the adjacency
 matrix should reflect the same ordering as `wordlist`) and the results
 are then returned as the relevant words.
 """
-cliques(adj, wordlist) = cliques!(Vector{Vector{String}}(), adj, wordlist)
+cliques(adj, wordlist, order=5) =
+    cliques!(Vector{Vector{String}}(), adj, wordlist, order)
 
 """
-    cliques!(results::Vector{Vector{String}}, adj, wordlist)
+    cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5)
 
 Find all five-cliques in the adjacency matrix `adj`, storing the
 result in `results`.
@@ -331,12 +337,12 @@ result in `results`.
 
 See also [`cliques`](@ref)
 """
-function cliques!(results::Vector{Vector{String}}, adj, wordlist)
-# TODO: turn this into a recursive call that allows find cliques of order n
+function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
+    order < 2 && throw(ArgumentError("Cliques of order < 2 are just vertices"))
     empty!(results)
     # sorting by degree so that more interconnected words come later
     # really really improves performance
-    deg = sum(eachrow(adj))
+    deg = vec(sum(adj; dims=1))
     deg_sort = sortperm(deg; rev=false)
     adj = adj[deg_sort, deg_sort]
     wordlist = wordlist[deg_sort]
@@ -344,36 +350,10 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
+    # threadlocal = copy(results)
     # for i in 1:ncols
         ri = @view(adj[:, i])
-        for j in (i+1):ncols
-            ri[j] || continue
-            rj = @view(adj[:, j])
-            num_shared_neighbors(ri, rj, j) < 3 && continue
-            # only allocate if useful
-            rj = shared_neighbors(ri, rj)
-            for k in (j+1):ncols
-                rj[k] || continue
-                rk = @view(adj[:, k])
-                num_shared_neighbors(rj, rk, k) < 2 && continue
-                # only allocate if useful
-                rk = shared_neighbors(rj, rk)
-                for l in (k+1):ncols
-                    rk[l] || continue
-                    rl = @view(adj[:, l])
-                    num_shared_neighbors(rk, rl, l) < 1 && continue
-                    # only allocate if useful
-                    rl = shared_neighbors(rk, rl)
-                    ws = view(wordlist, rl)
-                    for w in ws
-                        rr = similar(wordlist, 5)
-                        rr[1:4] .= view(wordlist, [i, j, k, l])
-                        rr[5] = w
-                        push!(threadlocal, rr)
-                    end
-                end
-            end
-        end
+        cliques!(threadlocal, adj, wordlist, order-2, ri, i)
         next!(p)
     end
 
@@ -386,6 +366,34 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     @info "$(length(results)) combinations found"
     return results
 end
+
+# this is an internal method that uses a recursive call to avoid
+# having explicit nested for loops
+function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_row::AbstractVector, members...)
+    ncols = size(adj, 2)
+
+    offset = first(members)
+    for i in (offset+1):ncols
+        prev_row[i] || continue
+        row = @view(adj[:, i])
+        num_shared_neighbors(prev_row, row, i) < depth && continue
+        row = shared_neighbors(prev_row, row)
+        if depth > 1
+            cliques!(results, adj, wordlist, depth-1, row, i, members...)
+        else
+            idx = [i, members...]
+            for w in view(wordlist, row)
+                rr = similar(wordlist, 5)
+                rr[1:4] .= view(wordlist, idx)
+                rr[5] = w
+                push!(results, rr)
+            end
+        end
+    end
+
+    return results
+end
+
 
 """
     adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
@@ -400,7 +408,6 @@ elements but requires 8 times the storage space.
 function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
     adj = T(undef, length(words), length(words))
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    # fill!(view(adj, diagind(adj)), true)
     @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
         adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
     end
