@@ -292,27 +292,29 @@ function num_shared_neighbors(r1, r2, start=1)
     # this is an efficient, non allocating way to
     # compute the number of elements in the intersection
     s = 0
-    length(r1) == length(r2) || throw(DimensionMismatch())
+    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
     @inbounds for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
 end
 
-const BoolRowView = SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
+const BoolRowView =
+    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
 
 function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
     # this method is specialized on row-views of Matrix{Bool}
     # and takes advantage of LoopVectorization.@turbo for SIMD instructions
     s = 0
-    length(r1) == length(r2) || throw(DimensionMismatch())
+    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
     @turbo for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
 end
 
-shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .* @view(r2[start:end])
+shared_neighbors(r1, r2, start=1) =
+    @view(r1[start:end]) .* @view(r2[start:end])
 
 """
     cliques(adj, wordlist, order=5)
@@ -395,7 +397,6 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_ro
 
     return results
 end
-
 
 """
     adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
