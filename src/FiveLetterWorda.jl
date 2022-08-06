@@ -227,7 +227,7 @@ end
 
 # TODO: expose constraint on word length
 """
-    main(; exclude_anagrams=true)
+    main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix)
 
 Do everything. 😉
 
@@ -237,18 +237,24 @@ no shared letters between words.
 If `exclude_anagrams=true`, then anagrams are removed from the word list
 before finding the result.
 
+You can specify the storage type of the adjaceny matrix with
+`adjacency_matrix_type`. The default, `BitMatrix`, is very dense in memory,
+packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
+byte and is thus 8 times as large, but noticably faster.
+See also [`adjacency_matrix`](@ref)
+
 Returns a named tuple of containing
 - the adjacency matrix `adj` of words, i.e. the matrix of indicators for
   whether a given pair of words have no letters in common
 - the vector of words used `words`
 - the vector of [`WordCombination`](@ref)s found.
 """
-function main(; exclude_anagrams=true)
+function main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix)
     words = five_letter_words()
     if exclude_anagrams
         words = remove_anagrams(words)
     end
-    adj = adjacency_matrix(words)
+    adj = adjacency_matrix(words, adjacency_matrix_type)
     sets = Vector{Vector{String}}()
     cliques!(sets, adj, words)
     return (; adj, words, combinations=WordCombination.(sets))
@@ -288,7 +294,7 @@ function num_shared_neighbors(r1, r2, start=1)
     return s
 end
 
-shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
+shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .* @view(r2[start:end])
 
 # TODO: turn this into a recursive call that allows find cliques of order n
 function cliques!(results::Vector{Vector{String}}, adj, wordlist)
@@ -345,8 +351,18 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     return results
 end
 
-function adjacency_matrix(words)
-    adj = BitMatrix(undef, length(words), length(words))
+"""
+    adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+
+Compute the adjacency matrix.
+
+Default is `BitMatrix`, which is a memory dense format, but which
+can be slower to read individual elements. Another alternative is
+`Matrix{Bool}`, which is noticably faster for reading individual
+elements but requires 8 times the storage space.
+"""
+function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+    adj = T(undef, length(words), length(words))
     fill!(adj, false) # init the diagonal; everything else is overwritten
     # fill!(view(adj, diagind(adj)), true)
     @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
