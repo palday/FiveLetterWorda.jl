@@ -11,19 +11,32 @@ Here's a worst-case timing run (clean run in a new session, so you the just-ahea
 
 ```julia
 julia> @time begin
-       using FiveLetterWorda
-       (; adj, words, combinations) = main()
-       end;
-Computing adjacency matrix... 100%|██████████████████████████████████████████| Time: 0:00:10
-Finding cliques... 100%|███████████████████████████████████████| Time: 0:01:35 (15.96 ms/it)
-[ Info: 538 combinations found
-118.378173 seconds (213.52 M allocations: 59.811 GiB, 5.39% gc time, 9.30% compilation time)
+              using FiveLetterWorda
+              (; adj, words, combinations) = main()
+              end;
+[ Info: Precompiling FiveLetterWorda [40c3fe41-db9e-4ab5-a060-da035752fe98]
+Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:11
+Finding cliques... 100%|████████████████████████████████████████| Time: 0:00:55 ( 9.34 ms/it)
+[ Info: 540 combinations found
+ 83.312460 seconds (213.71 M allocations: 59.940 GiB, 8.21% gc time, 13.73% compilation time)
+```
+
+This is fast enough that we can even include anagrams if do desired (run in the same session as the previous):
+```julia
+julia> @time begin
+              using FiveLetterWorda
+              (; adj, words, combinations) = main(; exclude_anagrams=false)
+              end;
+Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:33
+Finding cliques... 100%|████████████████████████████████████████| Time: 0:03:10 (18.70 ms/it)
+[ Info: 831 combinations found
+225.831852 seconds (475.65 M allocations: 136.695 GiB, 6.03% gc time, 0.30% compilation time)
 ```
 
 For that timing run, I used 8 threads on a 4-core 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz.
 This corresponds to the default behavior with `julia --threads=auto`, with 2 threads per hyperthreaded core. See below for more information.
 
-The adjacency matrix computation is quite fast and efficient in memory because we use `BitArray`s to pack 8 vertices in a single byte.
+The adjacency matrix computation is quite fast and efficient in memory because we use `BitArray`s to pack 8 vertices in a single byte. Here, we show the adjaceny matrix _without anagrams_.
 ```julia
 julia> Base.summarysize(adj) # approximate size in bytes
 4464160
@@ -98,11 +111,23 @@ If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), 
 
 ```julia
 julia> @time begin
-       using FiveLetterWorda
-       (; adj, words, combinations) = main()
-       end;
+              using FiveLetterWorda
+              (; adj, words, combinations) = main()
+              end;
 Computing adjacency matrix... 100%|██████████████████████████████████████████| Time: 0:00:11
-Finding cliques... 100%|███████████████████████████████████████| Time: 0:04:09 (41.81 ms/it)
-[ Info: 538 combinations found
-273.688700 seconds (211.66 M allocations: 59.705 GiB, 1.67% gc time, 4.08% compilation time)
+Finding cliques... 100%|███████████████████████████████████████| Time: 0:02:29 (25.02 ms/it)
+[ Info: 540 combinations found
+173.556632 seconds (211.81 M allocations: 59.816 GiB, 2.76% gc time, 6.31% compilation time)
+```
+
+
+```julia
+julia> @time begin
+              using FiveLetterWorda
+              (; adj, words, combinations) = main(; exclude_anagrams=false)
+              end;
+Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:36
+Finding cliques... 100%|████████████████████████████████████████| Time: 0:07:58 (47.05 ms/it)
+[ Info: 831 combinations found
+528.429535 seconds (515.71 M allocations: 142.489 GiB, 2.12% gc time, 2.08% compilation time)
 ```
