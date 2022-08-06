@@ -409,6 +409,25 @@ function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
     return adj
 end
 
+function adjacency_matrix(words, T::Type{Matrix{Bool}})
+    # this method is specialized with a threading improvement and additional
+    # broadcasting that works nicely for this storage type
+    nw = length(words)
+    adj = T(undef, nw, nw)
+    fill!(adj, false) # init the diagonal; everything else is overwritten
+    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...")
+    @batch per=core for i in 1:nw
+        j = 1:(i-1)
+        adj[j, i] .= adj[i, j] .= good_pair.(Ref(words[i]), words[j])
+        next!(p)
+    end
+    finish!(p)
+    # why not make this Symmetric()? well, we don't do anything with methods
+    # specialized on Symmetric and the view-based access pattern is slower
+    # in some circumstances
+    return adj
+end
+
 function good_pair(w1::String, w2::String)
     return isempty(intersect!(Set(w1), w2))
 end
