@@ -377,6 +377,8 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_ro
         prev_row[i] || continue
         row = @view(adj[:, i])
         num_shared_neighbors(prev_row, row, i) < depth && continue
+        # only allocate when you actually need it -- the extra computation
+        # is cheaper than the unnecessary allocations
         row = shared_neighbors(prev_row, row)
         if depth > 1
             cliques!(results, adj, wordlist, depth-1, row, i, members...)
