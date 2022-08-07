@@ -13,8 +13,31 @@ Note that Matt Parker's original only found the combinations of equivalence clas
 Benjamin Paassen's Python-based code found the combinations of all five-letter words (at least those without internally repeated letters), giving him 831 combinations, computed in approximately twenty minutes on my laptop. (This is also the result I get.)
 
 ```bash
+$ time python generate_graph.py
+--- reading words file ---
+370105it [00:00, 1621336.98it/s]
+--- building neighborhoods ---
+100%|█████████████████████████████████████████| 10175/10175 [00:28<00:00, 359.17it/s]
+--- write to output ---
+100%|████████████████████████████████████████| 10175/10175 [00:02<00:00, 4416.99it/s]
 
+real    0m31.578s
+user    0m30.915s
+sys     0m0.644s
+$ time python five_clique.py
+--- loading graph ---
+10175it [00:03, 3068.66it/s]
+--- start clique finding (THIS WILL TAKE LONG!) ---
+100%|██████████████████████████████████████████| 10175/10175 [19:56<00:00,  8.50it/s]
+completed! Found 831 cliques
+--- write to output ---
+
+real    20m0.672s
+user    19m59.812s
+sys     0m0.548s
 ```
+
+**Total: approximately 20 minutes, 30 seconds**
 
 *Timings based on the Python code at git commit #9587e1cd.*
 
