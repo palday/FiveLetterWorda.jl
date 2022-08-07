@@ -3,13 +3,14 @@ module FiveLetterWorda
 using Arrow
 using Downloads
 using LinearAlgebra
+using LoopVectorization
 using Polyester
 using ProgressMeter
 using Scratch
 using ZipFile
 
 export main, WordCombination, nwords, nchars,
-       adjacency_matrix, cliques!, five_letter_words,
+       adjacency_matrix, cliques, cliques!, five_letter_words,
        remove_anagrams, write_tab
 
 const CACHE = Ref("")
@@ -83,6 +84,7 @@ Base.in(w::String, wc::WordCombination) = w in wc.words
 Base.in(c::Char, wc::WordCombination) = c in wc.chars
 Base.isempty(wc::WordCombination) = isempty(wc.words)
 Base.iterate(wc::WordCombination, args...) = iterate(wc.words, args...)
+Base.display(wc::WordCombination) = show(stdout, wc)
 
 function Base.:(==)(w1::WordCombination, w2::WordCombination)
     return w1.words == w2.words
@@ -189,9 +191,7 @@ function load_data()
     f = _fname()
     isfile(f) || download_data()
     tbl = Arrow.Table(f)
-    words = convert(Vector{String}, tbl.words)
-    # restrict ourselves to 5 letters
-    filter!(x -> length(x) == 5, words)
+    return tbl.words
 end
 
 """
@@ -208,16 +208,16 @@ alphabet.
 remove_anagrams(words::Vector{String}) = unique(Set, words)
 
 """
-    five_letter_words()
+    n_letter_words()
 
-Return the set of five-letter words containing five unique letters.
+Return the set of n-letter words containing n unique letters.
 
 Use [`remove_anagrams`](@ref) to remove anagrams.
 """
-function five_letter_words()
-    words = load_data()
+function n_letter_words(n::Int)
+    words = filter(x -> length(x) == n, load_data())
     # remove words with repeated letters
-    words = filter(x -> length(Set(x)) == 5, words)
+    words = filter!(x -> length(Set(x)) == n, words)
     return words
 end
 
@@ -227,15 +227,27 @@ end
 
 # TODO: expose constraint on word length
 """
-    main(; exclude_anagrams=true)
+    main(n=5; exclude_anagrams=true,
+        adjacency_matrix_type=Matrix{Bool}, order=fld(26, n))
 
 Do everything. 😉
 
-Find the set of five five-letter words where each group of five words has
-no shared letters between words.
+Find the set of groups of `order` `n`-letter words where each group of words
+has no shared letters between words.
 
 If `exclude_anagrams=true`, then anagrams are removed from the word list
 before finding the result.
+
+You can specify the storage type of the adjaceny matrix with
+`adjacency_matrix_type`. `BitMatrix`, is very dense in memory,
+packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
+byte and is thus 8 times as large, but noticably faster.
+See also [`adjacency_matrix`](@ref)
+
+The `order` specifies the order of cliques to find and defaults to
+`fld(26, n)`, i.e. the maximal possible order for a given word length.
+Note that cliques of lower order are more common, so there are **many**
+more of them.
 
 Returns a named tuple of containing
 - the adjacency matrix `adj` of words, i.e. the matrix of indicators for
@@ -243,14 +255,14 @@ Returns a named tuple of containing
 - the vector of words used `words`
 - the vector of [`WordCombination`](@ref)s found.
 """
-function main(; exclude_anagrams=true)
-    words = five_letter_words()
+function main(n::Int=5; exclude_anagrams=true, adjacency_matrix_type=Matrix{Bool},
+              order=fld(26, n))
+    words = n_letter_words(n)
     if exclude_anagrams
         words = remove_anagrams(words)
     end
-    adj = adjacency_matrix(words)
-    sets = Vector{Vector{String}}()
-    cliques!(sets, adj, words)
+    adj = adjacency_matrix(words, adjacency_matrix_type)
+    sets = cliques(adj, words, order)
     return (; adj, words, combinations=WordCombination.(sets))
 end
 
@@ -281,21 +293,59 @@ function num_shared_neighbors(r1, r2, start=1)
     # this is an efficient, non allocating way to
     # compute the number of elements in the intersection
     s = 0
-    length(r1) == length(r2) || throw(DimensionMismatch())
+    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
     @inbounds for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
 end
 
-shared_neighbors(r1, r2, start=1) = @view(r1[start:end]) .& @view(r2[start:end])
+const BoolRowView =
+    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
 
-# TODO: turn this into a recursive call that allows find cliques of order n
-function cliques!(results::Vector{Vector{String}}, adj, wordlist)
+function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
+    # this method is specialized on row-views of Matrix{Bool}
+    # and takes advantage of LoopVectorization.@turbo for SIMD instructions
+    s = 0
+    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
+    @turbo for i in start:length(r1)
+        s += r1[i] * r2[i]
+    end
+    return s
+end
+
+shared_neighbors(r1, r2, start=1) =
+    @view(r1[start:end]) .* @view(r2[start:end])
+
+"""
+    cliques(adj, wordlist, order=5)
+
+Find all five-cliques in the adjacency matrix `adj`.
+
+The cliques are interpreted as entries in `wordlist` (so the adjacency
+matrix should reflect the same ordering as `wordlist`) and the results
+are then returned as the relevant words.
+"""
+cliques(adj, wordlist, order=5) =
+    cliques!(Vector{Vector{String}}(), adj, wordlist, order)
+
+"""
+    cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5)
+
+Find all five-cliques in the adjacency matrix `adj`, storing the
+result in `results`.
+
+!!! warn
+    `result` is emptied before being populated.
+
+See also [`cliques`](@ref)
+"""
+function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
+    order < 2 && throw(ArgumentError("Cliques of order < 2 are just vertices"))
     empty!(results)
     # sorting by degree so that more interconnected words come later
     # really really improves performance
-    deg = sum(eachrow(adj))
+    deg = vec(sum(adj; dims=1))
     deg_sort = sortperm(deg; rev=false)
     adj = adj[deg_sort, deg_sort]
     wordlist = wordlist[deg_sort]
@@ -303,35 +353,10 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
+    # threadlocal = copy(results)
     # for i in 1:ncols
         ri = @view(adj[:, i])
-        for j in (i+1):ncols
-            ri[j] || continue
-            rj = @view(adj[:, j])
-            num_shared_neighbors(ri, rj, j) < 3 && continue
-            # only allocate if useful
-            rj = shared_neighbors(ri, rj)
-            for k in (j+1):ncols
-                rj[k] || continue
-                rk = @view(adj[:, k])
-                num_shared_neighbors(rj, rk, k) < 2 && continue
-                # only allocate if useful
-                rk = shared_neighbors(rj, rk)
-                for l in (k+1):ncols
-                    rk[l] || continue
-                    rl = @view(adj[:, l])
-                    num_shared_neighbors(rk, rl, l) < 1 && continue
-                    # only allocate if useful
-                    rl = shared_neighbors(rk, rl)
-                    ws = view(wordlist, rl)
-                    for w in ws
-                        rr = wordlist[[i, j, k, l]]
-                        push!(rr, w)
-                        push!(threadlocal, rr)
-                    end
-                end
-            end
-        end
+        cliques!(threadlocal, adj, wordlist, order-2, ri, i)
         next!(p)
     end
 
@@ -345,14 +370,74 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist)
     return results
 end
 
-function adjacency_matrix(words)
-    adj = BitMatrix(undef, length(words), length(words))
-    fill!(adj, false) # init the diagonal; everything else is overwritten
-    # fill!(view(adj, diagind(adj)), true)
-    @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
-        adj[i, j] = good_pair(words[i], words[j])
+# this is an internal method that uses a recursive call to avoid
+# having explicit nested for loops
+function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_row::AbstractVector, members...)
+    ncols = size(adj, 2)
+
+    offset = first(members)
+    for i in (offset+1):ncols
+        prev_row[i] || continue
+        row = @view(adj[:, i])
+        num_shared_neighbors(prev_row, row, i) < depth && continue
+        # only allocate when you actually need it -- the extra computation
+        # is cheaper than the unnecessary allocations
+        row = shared_neighbors(prev_row, row)
+        if depth > 1
+            cliques!(results, adj, wordlist, depth-1, row, i, members...)
+        else
+            idx = [i, members...]
+            for w in view(wordlist, row)
+                rr = similar(wordlist, 5)
+                rr[1:4] .= view(wordlist, idx)
+                rr[5] = w
+                push!(results, rr)
+            end
+        end
     end
-    return Symmetric(adj, :L)
+
+    return results
+end
+
+"""
+    adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+
+Compute the adjacency matrix.
+
+Default is `BitMatrix`, which is a memory dense format, but which
+can be slower to read individual elements. Another alternative is
+`Matrix{Bool}`, which is noticably faster for reading individual
+elements but requires 8 times the storage space.
+"""
+function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+    adj = T(undef, length(words), length(words))
+    fill!(adj, false) # init the diagonal; everything else is overwritten
+    @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
+        adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
+    end
+    # why not make this Symmetric()? well, we don't do anything with methods
+    # specialized on Symmetric and the view-based access pattern is slower
+    # in some circumstances
+    return adj
+end
+
+function adjacency_matrix(words, T::Type{Matrix{Bool}})
+    # this method is specialized with a threading improvement and additional
+    # broadcasting that works nicely for this storage type
+    nw = length(words)
+    adj = T(undef, nw, nw)
+    fill!(adj, false) # init the diagonal; everything else is overwritten
+    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...")
+    @batch per=core for i in 1:nw
+        j = 1:(i-1)
+        adj[j, i] .= adj[i, j] .= good_pair.(Ref(words[i]), words[j])
+        next!(p)
+    end
+    finish!(p)
+    # why not make this Symmetric()? well, we don't do anything with methods
+    # specialized on Symmetric and the view-based access pattern is slower
+    # in some circumstances
+    return adj
 end
 
 function good_pair(w1::String, w2::String)
