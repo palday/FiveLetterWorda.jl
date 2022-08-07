@@ -60,7 +60,7 @@ There are a bunch here, including
 Despite these specializations and optimizations, the majority of the code is written in a fairly general style with comparatively few type constraints to allow users to use other data types.
 Julia will nonetheless produce specialized methods for the types actually used.
 **The main constraint is that the adjacency matrix and word list are assumed to be stored in 1-based linearly indexed arrays. If you violate this constraint, you may get errors, inaccurate results or even a segfault.**
-So please, no [`StarWarsArrays`](https://github.com/giordano/StarWarsArrays.jl) or [`OffsetArrays`](https://github.com/JuliaArrays/OffsetArrays.jl)
+So please, no [`StarWarsArrays`](https://github.com/giordano/StarWarsArrays.jl) or [`OffsetArrays`](https://github.com/JuliaArrays/OffsetArrays.jl).
 
 I also took advantage of [`ProgressMeter.jl`](https://github.com/timholy/ProgressMeter.jl) to add nice progress meters to everything.
 
@@ -126,7 +126,7 @@ Words: birch, fldxt, gawky, numps, vejoz
 There is also a method for saving the output to file. Note that the results are sorted before saving in order to make it easier to compare results, but the results returned by `cliques` and thus `main` are unsorted.
 The ordering will likely differ between runs due to the use of multithreading.
 
-## Multithreading
+## The impact of multithreading
 
 We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
 
