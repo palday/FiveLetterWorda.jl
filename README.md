@@ -145,6 +145,8 @@ user    1m54.060s
 sys     0m16.187s
 ```
 
+**Total: approximately 2 minutes, 10 seconds**
+
 ### Including anagrams
 
 ```bash
