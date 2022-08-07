@@ -1,85 +1,101 @@
 # FiveLetterWorda.jl
 
-Inspired by: https://github.com/standupmaths/fiveletterworda/
+*Can you find: five five-letter words with twenty-five unique letters?*
 
-See also a similar idea done in Python: https://gitlab.com/bpaassen/five_clique
+Inspired by: https://youtu.be/_-AfhLQfb6w
 
-This is a moderately optimized Julia program. We could probably optimize things a bit more, but it doesn't seem worth the effort. We use views throughout in order to reduce allocations and access arrays in column-major order.
-(Unlike NumPy, Julia is column-major.) The adjacency matrix is sorted by degree, so that higher degree nodes are searched later. This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candiate is nonviable sooner. Sorting the adjacency matrix in the reverse order dramatically decreases performance because it takes much longer to realize that a clique is nonviable.
+Matt Parker's original solution: https://github.com/standupmaths/fiveletterworda/
 
-Here's a worst-case timing run (clean run in a new session, so you the just-ahead-of-time compilation is included in the timings):
+Benjamin Paassen's optimzied solution: https://gitlab.com/bpaassen/five_clique
 
-```julia
-julia> @time begin
-              using FiveLetterWorda
-              (; adj, words, combinations) = main()
-              end;
-[ Info: Precompiling FiveLetterWorda [40c3fe41-db9e-4ab5-a060-da035752fe98]
-Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:11
-Finding cliques... 100%|████████████████████████████████████████| Time: 0:00:55 ( 9.34 ms/it)
-[ Info: 540 combinations found
- 83.312460 seconds (213.71 M allocations: 59.940 GiB, 8.21% gc time, 13.73% compilation time)
+Note that Matt Parker's original only found the combinations of equivalence classes under anagrams, giving him 538 combinations, computed over approximately a month. (However, I think he missed two, see below.)
+
+Benjamin Paassen's Python-based code found the combinations of all five-letter words (at least those without internally repeated letters), giving him 831 combinations, computed in approximately twenty minutes on my laptop. (This is also the result I get.)
+
+```bash
+
 ```
 
+*Timings based on the Python code at git commit #9587e1cd.*
+
+## Julia FTW
+
+This started off as a moderately optimized Julia program, but then I wanted to see how fast I could make it without doing really fancy things with the low-level representation of the adjaceny matrix.
+As such, it's a nice example of the power of Julia: you start off writing a program in a high-level language, much like
+you would in Python or Matlab.
+But unlike Python or Matlab where you have to start using a second language or libraries/functions wrapping things in a second language (e.g. NumPy), you just keep applying successive optimizations in Julia.
+There are a bunch here, including
+
+- the use of views to avoid unnecessary memory allocations
+- access arrays in column-major order (Julia is column-major, unlike NumPy, which is row-major)
+- a few optimized loops including
+    - disabling of bounds checks in a tight inner loop via `@inbounds` (after a dimensionality check)
+    - threading via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) and
+    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`LoopVectorization.jl`](https://juliasimd.github.io/LoopVectorization.jl/stable/).
+- method specialization to enable optimizations only available on certain datatypes, which allows choosing between space and computation time for `BitMatrix` and `Matrix{Bool}`.
+
+Despite these specializations and optimizations, the majority of the code is written in a fairly general style with comparatively few type constraints to allow users to use other data types.
+Julia will nonetheless produce specialized methods for the types actually used.
+**The main constraint is that the adjacency matrix and word list are assumed to be stored in 1-based linearly indexed arrays. If you violate this constraint, you may get errors, inaccurate results or even a segfault.**
+So please, no [`StarWarsArrays`](https://github.com/giordano/StarWarsArrays.jl) or [`OffsetArrays`](https://github.com/JuliaArrays/OffsetArrays.jl)
+
+I also took advantage of [`ProgressMeter.jl`](https://github.com/timholy/ProgressMeter.jl) to add nice progress meters to everything.
+
+I originally wrote everything as a series of nested loops, but moved things over to a more general recursive call (hidden from the user) to allow for a more general approach that kind find cliques of arbitrary order.
+Nonetheless, performance is still quite good (see below).
+
+Internally, the main clique-finding functions sorts the adjacency matrix by degree before searching cliques, so that higher degree nodes are searched later.
+(The function `adjacency_matrix` returns the adjacency matrix in the same order as the provided word list so that the row/column indices of the matrix map directly to indices in the word list.)
+This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candiate is nonviable sooner.
+Sorting the adjacency matrix in the reverse order dramatically decreases performance because it takes much longer to realize that a clique is nonviable.
+
+## Timings
+
+For these, we use worst case timings (clean run in a new session, so you the just-ahead-of-time compilation is included in the timings).
+We use the shell's timing utility instead of Julia's `@time` for maximum comparability with the Python timings.
+Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial compuations.
+
+### Excluding Anagrams
+
+```bash
+```
+
+### Including Anagrams
 This is fast enough that we can even include anagrams if do desired (run in the same session as the previous):
-```julia
-julia> @time begin
-              using FiveLetterWorda
-              (; adj, words, combinations) = main(; exclude_anagrams=false)
-              end;
-Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:33
-Finding cliques... 100%|████████████████████████████████████████| Time: 0:03:10 (18.70 ms/it)
-[ Info: 831 combinations found
-225.831852 seconds (475.65 M allocations: 136.695 GiB, 6.03% gc time, 0.30% compilation time)
+```bash
 ```
 
-For that timing run, I used 8 threads on a 4-core 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz.
-This corresponds to the default behavior with `julia --threads=auto`, with 2 threads per hyperthreaded core. See below for more information.
-
-The adjacency matrix computation is quite fast and efficient in memory because we use `BitArray`s to pack 8 vertices in a single byte. Here, we show the adjaceny matrix _without anagrams_.
-```julia
-julia> Base.summarysize(adj) # approximate size in bytes
-4464160
-
-julia> length(adj) / Base.summarysize(adj)
-7.999842299559155
-```
-
-Somewhat surprisingly, the pairwise connectivity is quite high:
-```julia
-julia> sparse(adj)
-5976×5976 SparseMatrixCSC{Bool, Int64} with 6425280 stored entries:
-⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣀⣀⣀⠘⠛⢛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⢀⣀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⠀⠀⢸⣿⣿⣿⣿⣿⣿⣯⣽⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣶⣶⣾⠛⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣾⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⡿⣿⣿⣿⣿⣿⣿⣿⣀⡸⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣷⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⣻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣾⠛⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⣻⣿⣿⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣀⣸⣿⣿⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠉⣿⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⣿⣿⣿
-⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⡿
-
-julia> using Statistics
-
-julia> mean(count, eachrow(adj))
-1075.1807228915663
-```
+## Inspecting the Results
 
 There is a type `WordCombination` defined for representing word combinations in a nice way, including pretty printing.
 
 ```julia
-julia> combinations[end]
+julia> using FiveLetterWorda
+
+julia> (; adj, words, combinations) = main(); # semicolon suppresses displaying the return value
+
+julia> combinations[1] # Julia uses 1-based indexing
 WordCombination with 5 words containing 25 distinct characters
 Chars: abcdefghijklmnoprstuvwxyz
-Words: comps, fldxt, jarvy, uzbek, whing
+Words: birch, fldxt, gawky, numps, vejoz
 ```
+
+There is also a method for saving the output to file. Note that the results are sorted before saving in order to make it easier to compare results, but the results returned by `cliques` and thus `main` are unsorted.
+The ordering will likely differ between runs due to the use of multithreading.
+
+## Multithreading
+
+We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
+
+If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime essentially doubles):
+
+```bash
+```
+
+
+```bash
+```
+
 
 ## Julia quick start
 
@@ -103,31 +119,4 @@ WordCombination with 5 words containing 25 distinct characters
 Chars: abcdefghijklmnoprstuvwxyz
 Words: birch, fldxt, gawky, numps, vejoz
 
-```
-
-We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
-
-If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime essentially doubles):
-
-```julia
-julia> @time begin
-              using FiveLetterWorda
-              (; adj, words, combinations) = main()
-              end;
-Computing adjacency matrix... 100%|██████████████████████████████████████████| Time: 0:00:11
-Finding cliques... 100%|███████████████████████████████████████| Time: 0:02:29 (25.02 ms/it)
-[ Info: 540 combinations found
-173.556632 seconds (211.81 M allocations: 59.816 GiB, 2.76% gc time, 6.31% compilation time)
-```
-
-
-```julia
-julia> @time begin
-              using FiveLetterWorda
-              (; adj, words, combinations) = main(; exclude_anagrams=false)
-              end;
-Computing adjacency matrix... 100%|███████████████████████████████████████████| Time: 0:00:36
-Finding cliques... 100%|████████████████████████████████████████| Time: 0:07:58 (47.05 ms/it)
-[ Info: 831 combinations found
-528.429535 seconds (515.71 M allocations: 142.489 GiB, 2.12% gc time, 2.08% compilation time)
 ```

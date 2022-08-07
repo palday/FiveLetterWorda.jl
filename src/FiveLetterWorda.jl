@@ -228,7 +228,7 @@ end
 # TODO: expose constraint on word length
 """
     main(n=5; exclude_anagrams=true,
-        adjacency_matrix_type=BitMatrix, order=fld(26, n))
+        adjacency_matrix_type=Matrix{Bool}, order=fld(26, n))
 
 Do everything. 😉
 
@@ -239,7 +239,7 @@ If `exclude_anagrams=true`, then anagrams are removed from the word list
 before finding the result.
 
 You can specify the storage type of the adjaceny matrix with
-`adjacency_matrix_type`. The default, `BitMatrix`, is very dense in memory,
+`adjacency_matrix_type`. `BitMatrix`, is very dense in memory,
 packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
 byte and is thus 8 times as large, but noticably faster.
 See also [`adjacency_matrix`](@ref)
@@ -255,7 +255,7 @@ Returns a named tuple of containing
 - the vector of words used `words`
 - the vector of [`WordCombination`](@ref)s found.
 """
-function main(n::Int=5; exclude_anagrams=true, adjacency_matrix_type=BitMatrix,
+function main(n::Int=5; exclude_anagrams=true, adjacency_matrix_type=Matrix{Bool},
               order=fld(26, n))
     words = n_letter_words(n)
     if exclude_anagrams
