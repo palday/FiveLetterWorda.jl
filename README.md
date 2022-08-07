@@ -81,12 +81,33 @@ Julia's compilation model means that it often has noticeably worse startup times
 ### Excluding Anagrams
 
 ```bash
+$ time julia --project --threads=auto -e'using FiveLetterWorda; main();'
+Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:06
+Finding cliques... 100%|███████████████████████████████| Time: 0:00:39 ( 6.62 ms/it)
+[ Info: 540 combinations found
+
+real    1m12.751s
+user    4m20.120s
+sys     0m18.169s
 ```
 
+**Total: approximately 1 minute, 15 seconds**
+
 ### Including Anagrams
-This is fast enough that we can even include anagrams if do desired (run in the same session as the previous):
+
 ```bash
+$ time julia --project --threads=auto -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
+Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:16
+Finding cliques... 100%|███████████████████████████████| Time: 0:02:15 (13.35 ms/it)
+[ Info: 831 combinations found
+
+real    2m54.040s
+user    13m28.695s
+sys     0m57.279s
 ```
+
+
+**Total: approximately 3 minutes**
 
 ## Inspecting the Results
 
@@ -118,7 +139,6 @@ If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), 
 
 ```bash
 ```
-
 
 ## Julia quick start
 
