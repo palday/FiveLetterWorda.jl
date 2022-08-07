@@ -78,7 +78,7 @@ For these, we use worst case timings (clean run in a new session, so you the jus
 We use the shell's timing utility instead of Julia's `@time` for maximum comparability with the Python timings.
 Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial compuations.
 
-### Excluding Anagrams
+### Excluding anagrams
 
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main();'
@@ -93,7 +93,7 @@ sys     0m18.169s
 
 **Total: approximately 1 minute, 15 seconds**
 
-### Including Anagrams
+### Including anagrams
 
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
@@ -106,10 +106,9 @@ user    13m28.695s
 sys     0m57.279s
 ```
 
-
 **Total: approximately 3 minutes**
 
-## Inspecting the Results
+## Inspecting the results
 
 There is a type `WordCombination` defined for representing word combinations in a nice way, including pretty printing.
 
@@ -133,12 +132,34 @@ We take advantage of multithreading to speed things up. You'll need to start Jul
 
 If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime essentially doubles):
 
-```bash
-```
-
+### Excluding anagrams
 
 ```bash
+$ time julia --project --threads=1 -e'using FiveLetterWorda; main();'
+Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:10
+Finding cliques... 100%|███████████████████████████████| Time: 0:01:38 (16.52 ms/it)
+[ Info: 540 combinations found
+
+real    2m9.484s
+user    1m54.060s
+sys     0m16.187s
 ```
+
+### Including anagrams
+
+```bash
+$ time julia --project --threads=1 -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
+Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:21
+Finding cliques... 100%|███████████████████████████████| Time: 0:05:21 (31.57 ms/it)
+[ Info: 831 combinations found
+
+real    6m3.713s
+user    5m31.014s
+sys     0m33.329s
+```
+
+**Total: approximately 6 minutes, 5 seconds**
+
 
 ## Julia quick start
 
@@ -149,7 +170,7 @@ In other words, there's no need to strip out the `julia>` prompt; the REPL will 
 ```julia
 julia> using Pkg
 
-julia> Pkg.activate(".") # activate the current project in the current director
+julia> Pkg.activate(".") # activate the current project in the current directory
 
 julia> Pkg.instantiate() # install all dependencies
 
