@@ -84,6 +84,7 @@ Base.in(w::String, wc::WordCombination) = w in wc.words
 Base.in(c::Char, wc::WordCombination) = c in wc.chars
 Base.isempty(wc::WordCombination) = isempty(wc.words)
 Base.iterate(wc::WordCombination, args...) = iterate(wc.words, args...)
+Base.display(wc::WordCombination) = show(stdout, wc)
 
 function Base.:(==)(w1::WordCombination, w2::WordCombination)
     return w1.words == w2.words
