@@ -190,9 +190,7 @@ function load_data()
     f = _fname()
     isfile(f) || download_data()
     tbl = Arrow.Table(f)
-    words = convert(Vector{String}, tbl.words)
-    # restrict ourselves to 5 letters
-    filter!(x -> length(x) == 5, words)
+    return tbl.words
 end
 
 """
@@ -209,16 +207,16 @@ alphabet.
 remove_anagrams(words::Vector{String}) = unique(Set, words)
 
 """
-    five_letter_words()
+    n_letter_words()
 
-Return the set of five-letter words containing five unique letters.
+Return the set of n-letter words containing n unique letters.
 
 Use [`remove_anagrams`](@ref) to remove anagrams.
 """
-function five_letter_words()
-    words = load_data()
+function n_letter_words(n::Int)
+    words = filter(x -> length(x) == n, load_data())
     # remove words with repeated letters
-    words = filter(x -> length(Set(x)) == 5, words)
+    words = filter!(x -> length(Set(x)) == n, words)
     return words
 end
 
@@ -228,12 +226,13 @@ end
 
 # TODO: expose constraint on word length
 """
-    main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix, order=5)
+    main(n=5; exclude_anagrams=true,
+        adjacency_matrix_type=BitMatrix, order=fld(26, n))
 
 Do everything. 😉
 
-Find the set of five five-letter words where each group of five words has
-no shared letters between words.
+Find the set of groups of `order` `n`-letter words where each group of words
+has no shared letters between words.
 
 If `exclude_anagrams=true`, then anagrams are removed from the word list
 before finding the result.
@@ -244,9 +243,10 @@ packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
 byte and is thus 8 times as large, but noticably faster.
 See also [`adjacency_matrix`](@ref)
 
-The `order` specifies the order of cliques to find and default to 5
-(the maximum possible order for 5 letter words.) Note that cliques of lower
-order are more common, so there are **many** more of them.
+The `order` specifies the order of cliques to find and defaults to
+`fld(26, n)`, i.e. the maximal possible order for a given word length.
+Note that cliques of lower order are more common, so there are **many**
+more of them.
 
 Returns a named tuple of containing
 - the adjacency matrix `adj` of words, i.e. the matrix of indicators for
@@ -254,9 +254,9 @@ Returns a named tuple of containing
 - the vector of words used `words`
 - the vector of [`WordCombination`](@ref)s found.
 """
-function main(; exclude_anagrams=true, adjacency_matrix_type=BitMatrix,
-              order=5)
-    words = five_letter_words()
+function main(n::Int=5; exclude_anagrams=true, adjacency_matrix_type=BitMatrix,
+              order=fld(26, n))
+    words = n_letter_words(n)
     if exclude_anagrams
         words = remove_anagrams(words)
     end
