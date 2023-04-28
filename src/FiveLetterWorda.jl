@@ -5,6 +5,7 @@ using Downloads
 using LinearAlgebra
 using LoopVectorization
 using Polyester
+using PrecompileTools
 using ProgressMeter
 using Scratch
 using ZipFile
@@ -442,6 +443,16 @@ end
 
 function good_pair(w1::String, w2::String)
     return isempty(intersect!(Set(w1), w2))
+end
+
+@compile_workload begin
+    for exclude_anagrams in [true, false],
+        adjacency_matrix_type in [Matrix{Bool}, BitMatrix]
+        # 10 letter words are rare, so there isn't a huge list to deal with
+        # and we also can't examine cliques bigger than 2, so we don't
+        # have to recurse deeply
+        main(10; exclude_anagrams, adjacency_matrix_type)
+    end
 end
 
 end # module
