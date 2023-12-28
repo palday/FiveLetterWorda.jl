@@ -229,7 +229,8 @@ end
 # TODO: expose constraint on word length
 """
     main(n=5; exclude_anagrams=true,
-        adjacency_matrix_type=Matrix{Bool}, order=fld(26, n))
+        adjacency_matrix_type=Matrix{Bool}, order=fld(26, n),
+        progress=true)
 
 Do everything. 😉
 
@@ -257,13 +258,13 @@ Returns a named tuple of containing
 - the vector of [`WordCombination`](@ref)s found.
 """
 function main(n::Int=5; exclude_anagrams=true, adjacency_matrix_type=Matrix{Bool},
-              order=fld(26, n))
+              order=fld(26, n), progress=true)
     words = n_letter_words(n)
     if exclude_anagrams
         words = remove_anagrams(words)
     end
-    adj = adjacency_matrix(words, adjacency_matrix_type)
-    sets = cliques(adj, words, order)
+    adj = adjacency_matrix(words, adjacency_matrix_type; progress)
+    sets = cliques(adj, words, order; progress)
     return (; adj, words, combinations=WordCombination.(sets))
 end
 
@@ -319,7 +320,7 @@ shared_neighbors(r1, r2, start=1) =
     @view(r1[start:end]) .* @view(r2[start:end])
 
 """
-    cliques(adj, wordlist, order=5)
+    cliques(adj, wordlist, order=5; progress=true)
 
 Find all five-cliques in the adjacency matrix `adj`.
 
@@ -327,11 +328,12 @@ The cliques are interpreted as entries in `wordlist` (so the adjacency
 matrix should reflect the same ordering as `wordlist`) and the results
 are then returned as the relevant words.
 """
-cliques(adj, wordlist, order=5) =
-    cliques!(Vector{Vector{String}}(), adj, wordlist, order)
+cliques(adj, wordlist, order=5; progress=true) =
+    cliques!(Vector{Vector{String}}(), adj, wordlist, order; progress)
 
 """
-    cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5)
+    cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5;
+             progress=true)
 
 Find all five-cliques in the adjacency matrix `adj`, storing the
 result in `results`.
@@ -341,7 +343,7 @@ result in `results`.
 
 See also [`cliques`](@ref)
 """
-function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
+function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5; progress=true)
     order < 2 && throw(ArgumentError("Cliques of order < 2 are just vertices"))
     empty!(results)
     # sorting by degree so that more interconnected words come later
@@ -352,7 +354,7 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
     wordlist = wordlist[deg_sort]
 
     ncols = size(adj, 2)
-    p = Progress(ncols; showspeed=true, desc="Finding cliques...")
+    p = Progress(ncols; showspeed=true, desc="Finding cliques...", enabled=progress)
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
     # threadlocal = copy(results)
     # for i in 1:ncols
@@ -367,7 +369,7 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
         append!(results, th)
     end
 
-    @info "$(length(results)) combinations found"
+    progress && @info "$(length(results)) combinations found"
     return results
 end
 
@@ -401,7 +403,7 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_ro
 end
 
 """
-    adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+    adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix; progress=true)
 
 Compute the adjacency matrix.
 
@@ -410,10 +412,10 @@ can be slower to read individual elements. Another alternative is
 `Matrix{Bool}`, which is noticably faster for reading individual
 elements but requires 8 times the storage space.
 """
-function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
+function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix; progress=true)
     adj = T(undef, length(words), length(words))
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    @showprogress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
+    @showprogress enabled=progress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
         adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
     end
     # why not make this Symmetric()? well, we don't do anything with methods
@@ -422,13 +424,13 @@ function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix)
     return adj
 end
 
-function adjacency_matrix(words, T::Type{Matrix{Bool}})
+function adjacency_matrix(words, T::Type{Matrix{Bool}}; progress=true)
     # this method is specialized with a threading improvement and additional
     # broadcasting that works nicely for this storage type
     nw = length(words)
     adj = T(undef, nw, nw)
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...")
+    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...", enabled=progress)
     @batch per=core for i in 1:nw
         j = 1:(i-1)
         adj[j, i] .= adj[i, j] .= good_pair.(Ref(words[i]), words[j])
@@ -451,7 +453,7 @@ end
         # 10 letter words are rare, so there isn't a huge list to deal with
         # and we also can't examine cliques bigger than 2, so we don't
         # have to recurse deeply
-        main(10; exclude_anagrams, adjacency_matrix_type)
+        main(10; exclude_anagrams, adjacency_matrix_type, progress=false)
     end
 end
 
