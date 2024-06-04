@@ -1,8 +1,9 @@
 # FiveLetterWorda.jl
 
 [![Build Status][build-img]][build-url] [![codecov](https://codecov.io/gh/palday/FiveLetterWorda.jl/graph/badge.svg?token=iBTLt2GfOe)](https://codecov.io/gh/palday/FiveLetterWorda.jl) 
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://palday.github.io/FiveLetterWorda.jl/dev)
 <!-- [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://palday.github.io/FiveLetterWorda.jl/stable) -->
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://palday.github.io/FiveLetterWorda.jl/dev)
+
 
 [build-img]: https://github.com/palday/FiveLetterWorda.jl/actions/workflows/ci.yml/badge.svg
 [build-url]: https://github.com/palday/FiveLetterWorda.jl/actions
