@@ -296,7 +296,7 @@ function num_shared_neighbors(r1, r2, start=1)
     # compute the number of elements in the intersection
     s = 0
     length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @inbounds for i in start:length(r1)
+    @simd for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
@@ -316,8 +316,15 @@ function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
     return s
 end
 
-shared_neighbors(r1, r2, start=1) =
-    @view(r1[start:end]) .* @view(r2[start:end])
+function shared_neighbors(r1, r2, start=1)
+    s1 = @view(r1[start:end])
+    s2 = @view(r2[start:end])
+    result = similar(s1)
+    @simd for i in eachindex(s1, s2, result)
+        result[i] = s1[i] * s2[i]
+    end
+    return result
+end
 
 """
     cliques(adj, wordlist, order=5; progress=true)
@@ -335,7 +342,7 @@ cliques(adj, wordlist, order=5; progress=true) =
     cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5;
              progress=true)
 
-Find all five-cliques in the adjacency matrix `adj`, storing the
+Find all `order`-cliques in the adjacency matrix `adj`, storing the
 result in `results`.
 
 !!! warn
@@ -355,10 +362,10 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5; 
 
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...", enabled=progress, barlen=50)
-    @batch per=thread threadlocal=copy(results) for i in 1:ncols
-    # threadlocal = copy(results)
+    @batch per=thread stride=true threadlocal=copy(results) for i in 1:ncols
+    # threadlocal = [copy(results)]
     # for i in 1:ncols
-        ri = @view(adj[:, i])
+        ri = view(adj, :, i)
         cliques!(threadlocal, adj, wordlist, order-2, ri, i)
         next!(p)
     end
@@ -381,11 +388,10 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_ro
     offset = first(members)
     for i in (offset+1):ncols
         prev_row[i] || continue
-        row = @view(adj[:, i])
-        num_shared_neighbors(prev_row, row, i) < depth && continue
+        num_shared_neighbors(prev_row, view(adj, :, i), i) < depth && continue
         # only allocate when you actually need it -- the extra computation
         # is cheaper than the unnecessary allocations
-        row = shared_neighbors(prev_row, row)
+        row = shared_neighbors(prev_row, view(adj, :, i))
         if depth > 1
             cliques!(results, adj, wordlist, depth-1, row, i, members...)
         else
@@ -443,9 +449,7 @@ function adjacency_matrix(words, T::Type{Matrix{Bool}}; progress=true)
     return adj
 end
 
-function good_pair(w1::String, w2::String)
-    return isempty(intersect!(Set(w1), w2))
-end
+good_pair(w1, w2) = isdisjoint(w1, w2)
 
 @compile_workload begin
     for exclude_anagrams in [true, false],

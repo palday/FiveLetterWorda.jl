@@ -74,39 +74,56 @@ Sorting the adjacency matrix in the reverse order dramatically decreases perform
 
 ## Timings
 
-For these, we use worst case timings (clean run in a new session, so you the just-ahead-of-time compilation is included in the timings).
+For these, we use worst case timings (clean run in a new session, so the just-ahead-of-time compilation is included in the timings).
 We use the shell's timing utility instead of Julia's `@time` for maximum comparability with the Python timings.
-Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial compuations.
+Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial computations.
+
+All times were done on the following system:
+
+```julia
+julia> versioninfo()
+Julia Version 1.10.3
+Commit 0b4590a5507 (2024-04-30 10:59 UTC)
+Build Info:
+  Official https://julialang.org/ release
+Platform Info:
+  OS: Linux (x86_64-linux-gnu)
+  CPU: 16 × Intel(R) Xeon(R) E-2288G CPU @ 3.70GHz
+  WORD_SIZE: 64
+  LIBM: libopenlibm
+  LLVM: libLLVM-15.0.7 (ORCJIT, skylake)
+Threads: 16 default, 0 interactive, 8 GC (on 16 virtual cores)
+```
 
 ### Excluding anagrams
 
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main();'
-Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:06
-Finding cliques... 100%|███████████████████████████████| Time: 0:00:39 ( 6.62 ms/it)
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:06 ( 1.07 ms/it)
 [ Info: 540 combinations found
 
-real    1m12.751s
-user    4m20.120s
-sys     0m18.169s
+real    0m9.635s
+user    1m10.681s
+sys     0m4.632s
 ```
 
-**Total: approximately 1 minute, 15 seconds**
+**Total: approximately 10 seconds**
 
 ### Including anagrams
 
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
-Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:16
-Finding cliques... 100%|███████████████████████████████| Time: 0:02:15 (13.35 ms/it)
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:21 ( 2.14 ms/it)
 [ Info: 831 combinations found
 
-real    2m54.040s
-user    13m28.695s
-sys     0m57.279s
+real    0m25.769s
+user    4m11.250s
+sys     0m14.805s
 ```
 
-**Total: approximately 3 minutes**
+**Total: approximately 26 seconds**
 
 ## Inspecting the results
 
@@ -130,34 +147,34 @@ The ordering will likely differ between runs due to the use of multithreading.
 
 We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
 
-If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime essentially doubles):
+If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime increases dramatically, but scales less than linearly with the number of threads):
 
 ### Excluding anagrams
 
 ```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main();'
-Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:10
-Finding cliques... 100%|███████████████████████████████| Time: 0:01:38 (16.52 ms/it)
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:02
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:58 ( 9.74 ms/it)
 [ Info: 540 combinations found
 
-real    2m9.484s
-user    1m54.060s
-sys     0m16.187s
+real    1m2.478s
+user    1m2.380s
+sys     0m0.611s
 ```
 
-**Total: approximately 2 minutes, 10 seconds**
+**Total: approximately 1 minute, 3 seconds**
 
 ### Including anagrams
 
 ```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
-Computing adjacency matrix... 100%|██████████████████████████████████| Time: 0:00:21
-Finding cliques... 100%|███████████████████████████████| Time: 0:05:21 (31.57 ms/it)
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:03
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:03:07 (18.42 ms/it)
 [ Info: 831 combinations found
 
-real    6m3.713s
-user    5m31.014s
-sys     0m33.329s
+real    3m13.615s
+user    3m13.451s
+sys     0m0.688s
 ```
 
 **Total: approximately 6 minutes, 5 seconds**
