@@ -147,6 +147,10 @@ function Base.union!(w1::WordCombination, w2::WordCombination)
     return w1
 end
 
+function Base.isdisjoint(w1::WordCombination, w2::WordCombination)
+    return isdisjoint(w1.words, w2.words)
+end
+
 #####
 ##### Data loading
 #####
