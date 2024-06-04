@@ -1,5 +1,10 @@
 # FiveLetterWorda.jl
 
+[![Build Status][build-img]][build-url]
+
+[build-img]: https://github.com/palday/FiveLetterWorda.jl/actions/workflows/ci.yml/badge.svg
+[build-url]: https://github.com/palday/FiveLetterWorda.jl/actions
+
 *Can you find: five five-letter words with twenty-five unique letters?*
 
 Inspired by: https://youtu.be/_-AfhLQfb6w

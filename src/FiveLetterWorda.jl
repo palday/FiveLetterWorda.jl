@@ -11,7 +11,7 @@ using Scratch
 using ZipFile
 
 export main, WordCombination, nwords, nchars,
-       adjacency_matrix, cliques, cliques!, five_letter_words,
+       adjacency_matrix, cliques, cliques!, 
        remove_anagrams, write_tab
 
 const CACHE = Ref("")

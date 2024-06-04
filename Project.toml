@@ -16,8 +16,25 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 
 [compat]
+Aqua = "0.8"
 Arrow = "1,2"
+Downloads = "1"
+LinearAlgebra = "1"
+LoopVectorization = "0.12"
+Polyester = "0.7"
+PrecompileTools = "1"
 ProgressMeter = "1.7.2"
 Scratch = "1.1"
+SparseArrays = "1"
+Test = "1"
+TestSetExtensions = "3"
 ZipFile = "0.10"
 julia = "1.7"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestSetExtensions = "98d24dd4-01ad-11ea-1b02-c9a08f80db04"
+
+[targets]
+test = ["Aqua", "Test", "TestSetExtensions"]
