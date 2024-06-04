@@ -1,12 +1,20 @@
 # FiveLetterWorda.jl
 
+[![Build Status][build-img]][build-url] [![codecov](https://codecov.io/gh/palday/FiveLetterWorda.jl/graph/badge.svg?token=iBTLt2GfOe)](https://codecov.io/gh/palday/FiveLetterWorda.jl) 
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://palday.github.io/FiveLetterWorda.jl/dev)
+<!-- [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://palday.github.io/FiveLetterWorda.jl/stable) -->
+
+
+[build-img]: https://github.com/palday/FiveLetterWorda.jl/actions/workflows/ci.yml/badge.svg
+[build-url]: https://github.com/palday/FiveLetterWorda.jl/actions
+
 *Can you find: five five-letter words with twenty-five unique letters?*
 
 Inspired by: https://youtu.be/_-AfhLQfb6w
 
 Matt Parker's original solution: https://github.com/standupmaths/fiveletterworda/
 
-Benjamin Paassen's optimzied solution: https://gitlab.com/bpaassen/five_clique
+Benjamin Paassen's optimized solution: https://gitlab.com/bpaassen/five_clique
 
 Note that Matt Parker's original only found the combinations of equivalence classes under anagrams, giving him 538 combinations, computed over approximately a month. (However, I think he missed two, see below.)
 

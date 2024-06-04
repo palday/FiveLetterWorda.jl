@@ -23,3 +23,5 @@ docs/site/
 # environment.
 Manifest.toml
 Manifest-v1.*.toml
+timings.md
+words_alpha.arrow
