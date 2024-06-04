@@ -440,8 +440,6 @@ function adjacency_matrix(words, T::Type{Matrix{Bool}})
     return adj
 end
 
-function good_pair(w1::String, w2::String)
-    return isempty(intersect!(Set(w1), w2))
-end
+good_pair(w1, w2) = isdisjoint(w1, w2)
 
 end # module
