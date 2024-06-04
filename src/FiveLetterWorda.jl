@@ -14,7 +14,7 @@ export main, WordCombination, nwords, nchars,
        remove_anagrams, write_tab
 
 const CACHE = Ref("")
-const WORD_ZIP_URL = "https://github.com/dwyl/english-words/raw/master/words_alpha.zip"
+const WORD_ZIP_URL = "https://github.com/dwyl/english-words/raw/a77cb15f4f5beb59c15b945f2415328a6b33c3b0/words_alpha.zip"
 
 clear_scratchspaces!() = Scratch.clear_scratchspaces!(@__MODULE__)
 
