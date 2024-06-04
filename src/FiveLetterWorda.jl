@@ -359,10 +359,10 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5)
 
     ncols = size(adj, 2)
     p = Progress(ncols; showspeed=true, desc="Finding cliques...")
-    @batch per=thread threadlocal=copy(results) for i in 1:ncols
-    # threadlocal = copy(results)
+    @batch per=thread stride=true threadlocal=copy(results) for i in 1:ncols
+    # threadlocal = [copy(results)]
     # for i in 1:ncols
-        ri = @view(adj[:, i])
+        ri = view(adj, :, i)
         cliques!(threadlocal, adj, wordlist, order-2, ri, i)
         next!(p)
     end
