@@ -74,7 +74,7 @@ Sorting the adjacency matrix in the reverse order dramatically decreases perform
 
 ## Timings
 
-For these, we use worst case timings (clean run in a new session, so you the just-ahead-of-time compilation is included in the timings).
+For these, we use worst case timings (clean run in a new session, so the just-ahead-of-time compilation is included in the timings).
 We use the shell's timing utility instead of Julia's `@time` for maximum comparability with the Python timings.
 Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial compuations.
 
