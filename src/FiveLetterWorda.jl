@@ -294,6 +294,10 @@ function write_tab(fname, wcs::Vector{Vector{String}})
     return nothing
 end
 
+# if we want to specialize on Matrix{Bool} later; could consider the same for BitArray...
+const BoolRowView =
+    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
+
 function num_shared_neighbors(r1, r2, start::Int=1)
     # this is an efficient, non allocating way to
     # compute the number of elements in the intersection
@@ -311,20 +315,6 @@ function num_shared_neighbors(row::AbstractVector, start::Int=1)
     s = 0
     @simd for i in start:length(row)
         s += row[i]
-    end
-    return s
-end
-
-const BoolRowView =
-    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
-
-function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start::Int=1)
-    # this method is specialized on row-views of Matrix{Bool}
-    # and takes advantage of LoopVectorization.@simd for SIMD instructions
-    s = 0
-    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @simd for i in start:length(r1)
-        s += r1[i] * r2[i]
     end
     return s
 end
