@@ -332,7 +332,7 @@ cliques(adj, wordlist, order=5) =
 """
     cliques!(results::Vector{Vector{String}}, adj, wordlist, order=5)
 
-Find all five-cliques in the adjacency matrix `adj`, storing the
+Find all `order`-cliques in the adjacency matrix `adj`, storing the
 result in `results`.
 
 !!! warn
