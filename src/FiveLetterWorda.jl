@@ -314,8 +314,15 @@ function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
     return s
 end
 
-shared_neighbors(r1, r2, start=1) =
-    @view(r1[start:end]) .* @view(r2[start:end])
+function shared_neighbors(r1, r2, start=1)
+    s1 = @view(r1[start:end])
+    s2 = @view(r2[start:end])
+    result = similar(s1)
+    @simd for i in eachindex(s1, s2, result)
+        result[i] = s1[i] * s2[i]
+    end
+    return result
+end
 
 """
     cliques(adj, wordlist, order=5)
