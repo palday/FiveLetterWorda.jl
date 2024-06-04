@@ -354,7 +354,7 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5; 
     wordlist = wordlist[deg_sort]
 
     ncols = size(adj, 2)
-    p = Progress(ncols; showspeed=true, desc="Finding cliques...", enabled=progress)
+    p = Progress(ncols; showspeed=true, desc="Finding cliques...", enabled=progress, barlen=50)
     @batch per=thread threadlocal=copy(results) for i in 1:ncols
     # threadlocal = copy(results)
     # for i in 1:ncols
@@ -415,7 +415,7 @@ elements but requires 8 times the storage space.
 function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix; progress=true)
     adj = T(undef, length(words), length(words))
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    @showprogress enabled=progress "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
+    @showprogress enabled=progress barlen=50 "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
         adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
     end
     # why not make this Symmetric()? well, we don't do anything with methods
@@ -430,7 +430,7 @@ function adjacency_matrix(words, T::Type{Matrix{Bool}}; progress=true)
     nw = length(words)
     adj = T(undef, nw, nw)
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...", enabled=progress)
+    p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...", enabled=progress, barlen=50)
     @batch per=core for i in 1:nw
         j = 1:(i-1)
         adj[j, i] .= adj[i, j] .= good_pair.(Ref(words[i]), words[j])
