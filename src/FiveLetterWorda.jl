@@ -3,7 +3,6 @@ module FiveLetterWorda
 using Arrow
 using Downloads
 using LinearAlgebra
-using LoopVectorization
 using Polyester
 using PrecompileTools
 using ProgressMeter
@@ -15,7 +14,7 @@ export main, WordCombination, nwords, nchars,
        remove_anagrams, write_tab
 
 const CACHE = Ref("")
-const WORD_ZIP_URL = "https://github.com/dwyl/english-words/raw/master/words_alpha.zip"
+const WORD_ZIP_URL = "https://github.com/dwyl/english-words/raw/a77cb15f4f5beb59c15b945f2415328a6b33c3b0/words_alpha.zip"
 
 clear_scratchspaces!() = Scratch.clear_scratchspaces!(@__MODULE__)
 
@@ -146,6 +145,10 @@ function Base.union!(w1::WordCombination, w2::WordCombination)
     union!(w1.chars, w2.chars)
     union!(w1.words, w2.words)
     return w1
+end
+
+function Base.isdisjoint(w1::WordCombination, w2::WordCombination)
+    return isdisjoint(w1.words, w2.words)
 end
 
 #####
@@ -291,7 +294,11 @@ function write_tab(fname, wcs::Vector{Vector{String}})
     return nothing
 end
 
-function num_shared_neighbors(r1, r2, start=1)
+# if we want to specialize on Matrix{Bool} later; could consider the same for BitArray...
+const BoolRowView =
+    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
+
+function num_shared_neighbors(r1, r2, start::Int=1)
     # this is an efficient, non allocating way to
     # compute the number of elements in the intersection
     s = 0
@@ -302,24 +309,24 @@ function num_shared_neighbors(r1, r2, start=1)
     return s
 end
 
-const BoolRowView =
-    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
-
-function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start=1)
-    # this method is specialized on row-views of Matrix{Bool}
-    # and takes advantage of LoopVectorization.@turbo for SIMD instructions
+function num_shared_neighbors(row::AbstractVector, start::Int=1)
+    # this is an efficient, non allocating way to
+    # compute the number of elements in the intersection
     s = 0
-    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @turbo for i in start:length(r1)
-        s += r1[i] * r2[i]
+    @simd for i in start:length(row)
+        s += row[i]
     end
     return s
 end
 
-function shared_neighbors(r1, r2, start=1)
+function shared_neighbors(r1, r2, start::Int=1)
+    result = similar(@view(r1[start:end]))
+    return shared_neighbors!(result, r1, r2, start)
+end
+
+function shared_neighbors!(result, r1, r2, start::Int=1)
     s1 = @view(r1[start:end])
     s2 = @view(r2[start:end])
-    result = similar(s1)
     @simd for i in eachindex(s1, s2, result)
         result[i] = s1[i] * s2[i]
     end
@@ -386,12 +393,14 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_ro
     ncols = size(adj, 2)
 
     offset = first(members)
+    row = similar(prev_row)
     for i in (offset+1):ncols
         prev_row[i] || continue
         num_shared_neighbors(prev_row, view(adj, :, i), i) < depth && continue
         # only allocate when you actually need it -- the extra computation
         # is cheaper than the unnecessary allocations
-        row = shared_neighbors(prev_row, view(adj, :, i))
+        row = shared_neighbors!(row, prev_row, view(adj, :, i))
+        # num_shared_neighbors(row, i) < depth && continue
         if depth > 1
             cliques!(results, adj, wordlist, depth-1, row, i, members...)
         else

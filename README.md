@@ -51,7 +51,7 @@ sys     0m0.548s
 
 ## Julia FTW
 
-This started off as a moderately optimized Julia program, but then I wanted to see how fast I could make it without doing really fancy things with the low-level representation of the adjaceny matrix.
+This started off as a moderately optimized Julia program, but then I wanted to see how fast I could make it without doing really fancy things with the low-level representation of the adjacency matrix.
 As such, it's a nice example of the power of Julia: you start off writing a program in a high-level language, much like
 you would in Python or Matlab.
 But unlike Python or Matlab where you have to start using a second language or libraries/functions wrapping things in a second language (e.g. NumPy), you just keep applying successive optimizations in Julia.
@@ -62,7 +62,7 @@ There are a bunch here, including
 - a few optimized loops including
     - disabling of bounds checks in a tight inner loop via `@inbounds` (after a dimensionality check)
     - threading via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) and
-    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`LoopVectorization.jl`](https://juliasimd.github.io/LoopVectorization.jl/stable/).
+    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`@simd`](https://docs.julialang.org/en/v1/base/base/#Base.SimdLoop.@simd).
 - method specialization to enable optimizations only available on certain datatypes, which allows choosing between space and computation time for `BitMatrix` and `Matrix{Bool}`.
 
 Despite these specializations and optimizations, the majority of the code is written in a fairly general style with comparatively few type constraints to allow users to use other data types.
@@ -77,7 +77,7 @@ Nonetheless, performance is still quite good (see below).
 
 Internally, the main clique-finding functions sorts the adjacency matrix by degree before searching cliques, so that higher degree nodes are searched later.
 (The function `adjacency_matrix` returns the adjacency matrix in the same order as the provided word list so that the row/column indices of the matrix map directly to indices in the word list.)
-This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candiate is nonviable sooner.
+This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candidate is nonviable sooner.
 Sorting the adjacency matrix in the reverse order dramatically decreases performance because it takes much longer to realize that a clique is nonviable.
 
 ## Timings
@@ -108,30 +108,29 @@ Threads: 16 default, 0 interactive, 8 GC (on 16 virtual cores)
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main();'
 Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:06 ( 1.07 ms/it)
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:04 ( 0.73 ms/it)
 [ Info: 540 combinations found
 
-real    0m9.635s
-user    1m10.681s
-sys     0m4.632s
+real    0m6.738s
+user    0m45.099s
+sys     0m3.794s
 ```
 
-**Total: approximately 10 seconds**
+**Total: approximately 7 seconds**
 
 ### Including anagrams
 
 ```bash
-$ time julia --project --threads=auto -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
 Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:21 ( 2.14 ms/it)
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:12 ( 1.18 ms/it)
 [ Info: 831 combinations found
 
-real    0m25.769s
-user    4m11.250s
-sys     0m14.805s
+real    0m15.158s
+user    2m9.641s
+sys     0m9.119s
 ```
 
-**Total: approximately 26 seconds**
+**Total: approximately 15 seconds**
 
 ## Inspecting the results
 
@@ -161,31 +160,31 @@ If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), 
 
 ```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main();'
-Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:02
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:58 ( 9.74 ms/it)
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:50 ( 8.49 ms/it)
 [ Info: 540 combinations found
 
-real    1m2.478s
-user    1m2.380s
-sys     0m0.611s
+real    0m54.032s
+user    0m53.995s
+sys     0m0.551s
 ```
 
-**Total: approximately 1 minute, 3 seconds**
+**Total: approximately 54 seconds**
 
 ### Including anagrams
 
 ```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
 Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:03
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:03:07 (18.42 ms/it)
+Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:02:35 (15.33 ms/it)
 [ Info: 831 combinations found
 
-real    3m13.615s
-user    3m13.451s
-sys     0m0.688s
+real    2m41.330s
+user    2m39.746s
+sys     0m2.108s
 ```
 
-**Total: approximately 6 minutes, 5 seconds**
+**Total: approximately 2 minutes, 41 seconds**
 
 
 ## Julia quick start
