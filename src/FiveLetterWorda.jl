@@ -296,7 +296,7 @@ function num_shared_neighbors(r1, r2, start=1)
     # compute the number of elements in the intersection
     s = 0
     length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @turbo for i in start:length(r1)
+    @simd for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
@@ -320,7 +320,7 @@ function shared_neighbors(r1, r2, start=1)
     s1 = @view(r1[start:end])
     s2 = @view(r2[start:end])
     result = similar(s1)
-    @turbo for i in eachindex(s1, s2, result)
+    @simd for i in eachindex(s1, s2, result)
         result[i] = s1[i] * s2[i]
     end
     return result
