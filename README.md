@@ -51,7 +51,7 @@ sys     0m0.548s
 
 ## Julia FTW
 
-This started off as a moderately optimized Julia program, but then I wanted to see how fast I could make it without doing really fancy things with the low-level representation of the adjaceny matrix.
+This started off as a moderately optimized Julia program, but then I wanted to see how fast I could make it without doing really fancy things with the low-level representation of the adjacency matrix.
 As such, it's a nice example of the power of Julia: you start off writing a program in a high-level language, much like
 you would in Python or Matlab.
 But unlike Python or Matlab where you have to start using a second language or libraries/functions wrapping things in a second language (e.g. NumPy), you just keep applying successive optimizations in Julia.
@@ -77,7 +77,7 @@ Nonetheless, performance is still quite good (see below).
 
 Internally, the main clique-finding functions sorts the adjacency matrix by degree before searching cliques, so that higher degree nodes are searched later.
 (The function `adjacency_matrix` returns the adjacency matrix in the same order as the provided word list so that the row/column indices of the matrix map directly to indices in the word list.)
-This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candiate is nonviable sooner.
+This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candidate is nonviable sooner.
 Sorting the adjacency matrix in the reverse order dramatically decreases performance because it takes much longer to realize that a clique is nonviable.
 
 ## Timings
