@@ -62,7 +62,7 @@ There are a bunch here, including
 - a few optimized loops including
     - disabling of bounds checks in a tight inner loop via `@inbounds` (after a dimensionality check)
     - threading via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) and
-    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`LoopVectorization.jl`](https://juliasimd.github.io/LoopVectorization.jl/stable/).
+    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`@simd`](https://docs.julialang.org/en/v1/base/base/#Base.SimdLoop.@simd).
 - method specialization to enable optimizations only available on certain datatypes, which allows choosing between space and computation time for `BitMatrix` and `Matrix{Bool}`.
 
 Despite these specializations and optimizations, the majority of the code is written in a fairly general style with comparatively few type constraints to allow users to use other data types.

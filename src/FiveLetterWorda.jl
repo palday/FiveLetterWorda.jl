@@ -3,7 +3,6 @@ module FiveLetterWorda
 using Arrow
 using Downloads
 using LinearAlgebra
-using LoopVectorization
 using Polyester
 using PrecompileTools
 using ProgressMeter
@@ -306,7 +305,7 @@ function num_shared_neighbors(row::AbstractVector, start::Int=1)
     # this is an efficient, non allocating way to
     # compute the number of elements in the intersection
     s = 0
-    @turbo for i in start:length(row)
+    @simd for i in start:length(row)
         s += row[i]
     end
     return s
@@ -317,10 +316,10 @@ const BoolRowView =
 
 function num_shared_neighbors(r1::BoolRowView, r2::BoolRowView, start::Int=1)
     # this method is specialized on row-views of Matrix{Bool}
-    # and takes advantage of LoopVectorization.@turbo for SIMD instructions
+    # and takes advantage of LoopVectorization.@simd for SIMD instructions
     s = 0
     length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @turbo for i in start:length(r1)
+    @simd for i in start:length(r1)
         s += r1[i] * r2[i]
     end
     return s
