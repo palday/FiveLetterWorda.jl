@@ -147,7 +147,7 @@ The ordering will likely differ between runs due to the use of multithreading.
 
 We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
 
-If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime essentially doubles):
+If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime increases dramatically, but scales less than linearly with the number of threads):
 
 ### Excluding anagrams
 
