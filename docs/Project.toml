@@ -1,0 +1,6 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+FiveLetterWorda = "40c3fe41-db9e-4ab5-a060-da035752fe98"
+
+[compat]
+Documenter = "1.3"

@@ -31,8 +31,8 @@ Fields:
 - `chars::Set{Char}`
 - `words::Set{String}`
 
-Methods for [`union[!]`](@ref), [`intersect[!]`](@ref), [`push[!]`](@ref)
-and [`in[!]`](@ref) are provided.
+Methods for [`union`](@ref), [`intersect`](@ref), [`push!`](@ref)
+and [`in`](@ref) are provided.
 
 See also [`nwords`](@ref) and [`nchars`](@ref).
 """

@@ -1,15 +1,19 @@
 name: Julia
 on:
   push:
-      paths-ignore:
-        - 'README.md'
-      branches:
-        - main
+    paths-ignore:
+      - 'README.md'
+    branches:
+      - main
   pull_request:
-      paths-ignore:
-        - 'README.md'
-      branches:
-        - main
+    paths-ignore:
+      - 'README.md'
+    branches:
+      - main
+      - release-*
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true        
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
