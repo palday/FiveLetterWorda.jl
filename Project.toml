@@ -1,7 +1,7 @@
 name = "FiveLetterWorda"
 uuid = "40c3fe41-db9e-4ab5-a060-da035752fe98"
-authors = ["Phillip Alday <me@phillipalday.com>"]
 version = "0.1.0"
+authors = ["Phillip Alday <me@phillipalday.com>"]
 
 [deps]
 Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
@@ -11,7 +11,6 @@ Polyester = "f517fe37-dbe3-4b94-8317-1923a5111588"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
-SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 ZipFile = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 
 [compat]
@@ -23,7 +22,6 @@ Polyester = "0.7"
 PrecompileTools = "1"
 ProgressMeter = "1.7.2"
 Scratch = "1.1"
-SparseArrays = "1"
 Test = "1"
 TestSetExtensions = "3"
 ZipFile = "0.10"
