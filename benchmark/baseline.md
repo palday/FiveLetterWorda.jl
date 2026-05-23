@@ -28,12 +28,6 @@ is visible.
 | `main`             | `Matrix{Bool}`, no_anagrams   | 10.181 s |
 | `main`             | `Matrix{Bool}`, with_anagrams | 31.516 s |
 
-Observations:
-- `cliques` on `BitMatrix` is 7–8× slower than on `Matrix{Bool}` because the
-  inner Bool-by-Bool indexing on a BitArray goes through `getindex` per bit
-  instead of using `.chunks` directly.
-- `cliques` dominates total runtime. `adjacency_matrix` is a secondary cost.
-
 ## Stage 1 — UInt32 masks + chunked column representation
 
 Changes:
@@ -77,3 +71,45 @@ Observations:
   construction dropped to ~5% of total `main` runtime.
 - Cleared the per-bit `getindex` overhead that previously made the
   `BitMatrix` path 7× slower than `Matrix{Bool}` (now equivalent).
+
+## Stage 2 — rarest-letter exact-cover search (`order >= 4`)
+
+Changes:
+- For `order * word_size <= 26` and `order >= 4`, `cliques!` dispatches
+  to a 26-bit-mask exact-cover search that branches on the rarest
+  still-uncovered letter at each level. Words sharing a letter mask
+  (anagrams) are collapsed into a single branch and expanded at emit
+  time via a cartesian product over the anagram groups.
+- The adjacency matrix is no longer required by the clique search on
+  this path; the `adj` argument is informational. The adjacency matrix
+  is still built when `main` runs because the documented return
+  NamedTuple includes it.
+- Top-level branches (one per word containing the rarest letter, plus
+  one "skip the rarest letter" branch when the skip budget allows) are
+  parallelized with `@batch per=thread`.
+- For `order < 4` (skip budget grows to 11+ letters and the search
+  degenerates), `cliques!` continues to use the Stage 1 chunked-column
+  backtracking path.
+
+| Group              | Variant                       |  Stage 2 | vs Stage 0 |
+| ------------------ | ----------------------------- | -------- | ---------- |
+| `adjacency_matrix` | `Matrix{Bool}`, no_anagrams   |    50 ms |     12.5 × |
+| `adjacency_matrix` | `Matrix{Bool}`, with_anagrams |   172 ms |     10.4 × |
+| `adjacency_matrix` | `BitMatrix`, no_anagrams      |    94 ms |     13.0 × |
+| `adjacency_matrix` | `BitMatrix`, with_anagrams    |   278 ms |     11.5 × |
+| `cliques`          | `Matrix{Bool}`, no_anagrams   |    78 ms |    122   × |
+| `cliques`          | `Matrix{Bool}`, with_anagrams |    62 ms |    496   × |
+| `cliques`          | `BitMatrix`, no_anagrams      |    56 ms |   1233   × |
+| `cliques`          | `BitMatrix`, with_anagrams    |    64 ms |   3714   × |
+| `main`             | `Matrix{Bool}`, no_anagrams   |   158 ms |     64.4 × |
+| `main`             | `Matrix{Bool}`, with_anagrams |   280 ms |    112.6 × |
+
+Observations:
+- The clique search is now O(letter-frequency-tree depth) rather than
+  O(dense adjacency intersection) and runs in tens of milliseconds.
+- Adjacency matrix construction is the dominant cost of `main`, but it
+  is only there because the documented return value includes it; the
+  algorithm itself does not need it on the order-5 path.
+- The `cliques` numbers above pass an adjacency matrix in even though
+  the order-5 path ignores it. The pass-through cost is one Dict build
+  and `letter_mask` over the word list, both already cheap.

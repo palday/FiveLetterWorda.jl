@@ -395,6 +395,16 @@ See also [`cliques`](@ref)
 function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5; progress=true)
     order < 2 && throw(ArgumentError("Cliques of order < 2 are just vertices"))
     empty!(results)
+    # The rarest-letter exact-cover search dominates the adjacency-matrix
+    # backtracking when most letters must be covered (order * word size
+    # close to 26). At lower order the skip budget is large and the
+    # algorithm degenerates; the adjacency path is faster there. The
+    # `adj` argument is consulted for size/degree by the adjacency path
+    # and is otherwise informational under the rarest-letter path.
+    word_size = isempty(wordlist) ? 0 : length(first(wordlist))
+    if word_size > 0 && order >= 4 && word_size * order <= 26
+        return _cliques_rarest_letter!(results, wordlist, order; progress)
+    end
     # sorting by degree so that more interconnected words come later
     # really really improves performance
     deg = vec(sum(adj; dims=1))
@@ -478,6 +488,174 @@ end
     end
     @inbounds out[K + 1] = wordlist[last]
     return out
+end
+
+#####
+##### Rarest-letter exact-cover search
+#####
+#
+# Branches on the rarest still-uncovered letter at each level: pick any
+# word containing that letter (subject to disjointness with previous
+# picks), or skip the letter entirely. The "skip" branch is bounded by
+# the skip budget `26 - word_size * order`. Anagrams share a `UInt32`
+# letter mask and are expanded at emit time.
+
+# Recursive worker. `picks` is a mutable stack of masks (length grows to
+# `order`, then we emit). `letter_idx` indexes into `letter_order` (the
+# rarest-first letter ordering).
+function _rarest_recurse!(
+    results::AbstractVector{Vector{UInt32}},
+    masks_with_letter::AbstractVector,
+    letter_order::AbstractVector{<:Integer},
+    order::Int,
+    used::UInt32,
+    picks::AbstractVector{UInt32},
+    letter_idx::Int,
+    skips_remaining::Int,
+)
+    if length(picks) == order
+        push!(results, copy(picks))
+        return results
+    end
+    # Advance past letters already covered by `used`.
+    li = letter_idx
+    @inbounds while li <= 26
+        bit = letter_order[li]
+        ((used >> bit) & UInt32(1)) == 0 && break
+        li += 1
+    end
+    # Even if every letter is now covered, we may still need more picks.
+    li > 26 && return results
+    @inbounds bit = letter_order[li]
+    # Branch: pick a word whose mask contains this letter and is disjoint
+    # with everything we've already picked.
+    @inbounds for m in masks_with_letter[bit + 1]
+        (m & used) == UInt32(0) || continue
+        push!(picks, m)
+        _rarest_recurse!(results, masks_with_letter, letter_order, order,
+                         used | m, picks, li + 1, skips_remaining)
+        pop!(picks)
+    end
+    # Branch: skip this letter (consume one skip from the budget).
+    if skips_remaining > 0
+        _rarest_recurse!(results, masks_with_letter, letter_order, order,
+                         used | (UInt32(1) << bit), picks, li + 1,
+                         skips_remaining - 1)
+    end
+    return results
+end
+
+# Expand a vector of mask-cliques (each clique a `Vector{UInt32}` of
+# `order` mutually-disjoint masks) into word-cliques by taking the
+# cartesian product over the anagram groups behind each mask.
+function _expand_mask_cliques(
+    mask_cliques::Vector{Vector{UInt32}},
+    words_per_mask::Dict{UInt32, Vector{Int}},
+    wordlist,
+)
+    out = Vector{Vector{eltype(wordlist)}}()
+    sizehint!(out, length(mask_cliques))
+    for mc in mask_cliques
+        groups = (words_per_mask[m] for m in mc)
+        for combo in Iterators.product(groups...)
+            clique = Vector{eltype(wordlist)}(undef, length(mc))
+            @inbounds for (k, i) in enumerate(combo)
+                clique[k] = wordlist[i]
+            end
+            push!(out, clique)
+        end
+    end
+    return out
+end
+
+function _cliques_rarest_letter!(
+    results::Vector{Vector{String}},
+    wordlist,
+    order::Int;
+    progress=true,
+)
+    empty!(results)
+    n = length(wordlist)
+    masks = letter_mask.(wordlist)
+
+    # Anagram groups: map mask -> word indices producing it
+    words_per_mask = Dict{UInt32, Vector{Int}}()
+    sizehint!(words_per_mask, n)
+    @inbounds for i in 1:n
+        push!(get!(() -> Int[], words_per_mask, masks[i]), i)
+    end
+    unique_masks = collect(keys(words_per_mask))
+
+    # Letter frequency over distinct masks
+    letter_freq = zeros(Int, 26)
+    @inbounds for m in unique_masks
+        x = m
+        while x != UInt32(0)
+            b = trailing_zeros(x)
+            letter_freq[b + 1] += 1
+            x &= x - UInt32(1)
+        end
+    end
+    # Ascending sort: rarest letter first. `letter_order[k]` is the
+    # 0-based bit index of the k-th rarest letter.
+    letter_order = Int.(sortperm(letter_freq) .- 1)
+
+    # For each letter, list of distinct masks containing that letter
+    masks_with_letter = [UInt32[] for _ in 1:26]
+    @inbounds for m in unique_masks
+        x = m
+        while x != UInt32(0)
+            b = trailing_zeros(x)
+            push!(masks_with_letter[b + 1], m)
+            x &= x - UInt32(1)
+        end
+    end
+
+    word_size = length(first(wordlist))
+    skip_budget = 26 - word_size * order
+
+    # Top-level branching: parallelize over picks of the rarest letter
+    # plus the "skip rarest letter" branch.
+    rarest_bit = letter_order[1]
+    top_picks = masks_with_letter[rarest_bit + 1]
+
+    p = Progress(length(top_picks) + (skip_budget > 0 ? 1 : 0);
+                 showspeed=true, desc="Finding cliques...",
+                 enabled=progress, barlen=50)
+
+    @batch per=thread stride=true threadlocal=(
+        results=Vector{Vector{UInt32}}(),
+        picks=sizehint!(UInt32[], order),
+    ) for i in 1:length(top_picks)
+        m = top_picks[i]
+        push!(threadlocal.picks, m)
+        _rarest_recurse!(threadlocal.results, masks_with_letter, letter_order,
+                         order, m, threadlocal.picks, 2, skip_budget)
+        pop!(threadlocal.picks)
+        next!(p)
+    end
+
+    mask_cliques = reduce(vcat, (t.results for t in threadlocal); init=Vector{Vector{UInt32}}())
+
+    # Skip-rarest-letter branch (single task, sequential)
+    if skip_budget > 0
+        skip_results = Vector{Vector{UInt32}}()
+        skip_picks = sizehint!(UInt32[], order)
+        _rarest_recurse!(skip_results, masks_with_letter, letter_order, order,
+                         UInt32(1) << rarest_bit, skip_picks, 2,
+                         skip_budget - 1)
+        append!(mask_cliques, skip_results)
+        next!(p)
+    end
+
+    finish!(p)
+
+    # Expand mask-cliques to word-cliques (cartesian product over anagrams)
+    expanded = _expand_mask_cliques(mask_cliques, words_per_mask, wordlist)
+    append!(results, expanded)
+
+    progress && @info "$(length(results)) combinations found"
+    return results
 end
 
 # A 26-bit letter set as a UInt32: bit (c - 'a') is set iff `c` is in the

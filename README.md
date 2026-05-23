@@ -16,9 +16,9 @@ Matt Parker's original solution: https://github.com/standupmaths/fiveletterworda
 
 Benjamin Paassen's optimized solution: https://gitlab.com/bpaassen/five_clique
 
-Note that Matt Parker's original only found the combinations of equivalence classes under anagrams, giving him 538 combinations, computed over approximately a month. (However, I think he missed two, see below.)
+Matt Parker's original found 538 combinations of equivalence classes under anagrams, computed over approximately a month. This package reports the same 538 (earlier revisions of the package reported 540; the extra two were double-counts from a base-case off-by-one in the recursive search, not new cliques).
 
-Benjamin Paassen's Python-based code found the combinations of all five-letter words (at least those without internally repeated letters), giving him 831 combinations, computed in approximately twenty minutes on my laptop. (This is also the result I get.)
+Benjamin Paassen's Python-based code found the combinations of all five-letter words (at least those without internally repeated letters), giving him 831 combinations, computed in approximately twenty minutes on my laptop. (This is also the result we get.)
 
 ```bash
 $ time python generate_graph.py
@@ -57,13 +57,12 @@ you would in Python or Matlab.
 But unlike Python or Matlab where you have to start using a second language or libraries/functions wrapping things in a second language (e.g. NumPy), you just keep applying successive optimizations in Julia.
 There are a bunch here, including
 
-- the use of views to avoid unnecessary memory allocations
-- access arrays in column-major order (Julia is column-major, unlike NumPy, which is row-major)
-- a few optimized loops including
-    - disabling of bounds checks in a tight inner loop via `@inbounds` (after a dimensionality check)
-    - threading via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) and
-    - [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) operations via [`@simd`](https://docs.julialang.org/en/v1/base/base/#Base.SimdLoop.@simd).
-- method specialization to enable optimizations only available on certain datatypes, which allows choosing between space and computation time for `BitMatrix` and `Matrix{Bool}`.
+- words are represented as 26-bit `UInt32` letter masks, so the disjointness check for a pair of words is a single `(m1 & m2) == 0`
+- the adjacency matrix is converted internally to a flat column-aligned `Vector{UInt64}` of 64-bit chunks, so intersection and "is bit set" checks run as `count_ones(c1 & c2)` and a single shifted AND
+- when the search is dense enough that letters must be (almost) fully covered (e.g. five 5-letter words → 25 of 26 letters), the algorithm switches to a rarest-letter-first exact-cover branch-and-bound that visits each clique exactly once and ignores the adjacency matrix entirely
+- threading via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) and [SIMD](https://en.wikipedia.org/wiki/Single_instruction,_multiple_data) hints via [`@simd`](https://docs.julialang.org/en/v1/base/base/#Base.SimdLoop.@simd)
+- type-stable recursion via `NTuple{K,Int}` for the picked-vertex stack so the compiler specializes on recursion depth
+- per-thread, depth-indexed pre-allocated chunk buffers reused across recursive calls
 
 Despite these specializations and optimizations, the majority of the code is written in a fairly general style with comparatively few type constraints to allow users to use other data types.
 Julia will nonetheless produce specialized methods for the types actually used.
@@ -72,13 +71,10 @@ So please, no [`StarWarsArrays`](https://github.com/giordano/StarWarsArrays.jl) 
 
 I also took advantage of [`ProgressMeter.jl`](https://github.com/timholy/ProgressMeter.jl) to add nice progress meters to everything.
 
-I originally wrote everything as a series of nested loops, but moved things over to a more general recursive call (hidden from the user) to allow for a more general approach that kind find cliques of arbitrary order.
-Nonetheless, performance is still quite good (see below).
+The clique-finding algorithm has two paths internally:
 
-Internally, the main clique-finding functions sorts the adjacency matrix by degree before searching cliques, so that higher degree nodes are searched later.
-(The function `adjacency_matrix` returns the adjacency matrix in the same order as the provided word list so that the row/column indices of the matrix map directly to indices in the word list.)
-This dramatically improves performance -- my hypothesis is that this leads to earlier "short-circuiting" on average, i.e., realizing that a clique-candidate is nonviable sooner.
-Sorting the adjacency matrix in the reverse order dramatically decreases performance because it takes much longer to realize that a clique is nonviable.
+- For low-order searches (`order < 4`), the adjacency-matrix backtracking is still the right tool. It sorts vertices by degree (ascending) so that higher-degree, more interconnected words come later in the search, which improves short-circuiting on average. Sorting in the reverse order dramatically decreases performance because non-viability is noticed much later.
+- For dense searches (`order * word_size <= 26` and `order >= 4`, e.g. order 5 over 5-letter words), `cliques!` switches to a rarest-letter-first exact-cover search over 26-bit letter masks. It picks the rarest still-uncovered letter at each level and branches over masks containing that letter (or, within budget, skips the letter). Anagrams collapse into a single branch and are expanded at emit time. On this path the adjacency-matrix argument is informational; the algorithm derives masks from the word list directly.
 
 ## Timings
 
@@ -86,51 +82,31 @@ For these, we use worst case timings (clean run in a new session, so the just-ah
 We use the shell's timing utility instead of Julia's `@time` for maximum comparability with the Python timings.
 Julia's compilation model means that it often has noticeably worse startup times than Python, but you often gain that time back if you're doing repeated or otherwise nontrivial computations.
 
-All times were done on the following system:
-
-```julia
-julia> versioninfo()
-Julia Version 1.10.3
-Commit 0b4590a5507 (2024-04-30 10:59 UTC)
-Build Info:
-  Official https://julialang.org/ release
-Platform Info:
-  OS: Linux (x86_64-linux-gnu)
-  CPU: 16 × Intel(R) Xeon(R) E-2288G CPU @ 3.70GHz
-  WORD_SIZE: 64
-  LIBM: libopenlibm
-  LLVM: libLLVM-15.0.7 (ORCJIT, skylake)
-Threads: 16 default, 0 interactive, 8 GC (on 16 virtual cores)
-```
+All times below were measured on Julia 1.10.11 on an 8-thread laptop.
 
 ### Excluding anagrams
 
 ```bash
 $ time julia --project --threads=auto -e'using FiveLetterWorda; main();'
-Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:04 ( 0.73 ms/it)
-[ Info: 540 combinations found
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:00
+[ Info: 538 combinations found
 
-real    0m6.738s
-user    0m45.099s
-sys     0m3.794s
+real    0m1.7s
 ```
 
-**Total: approximately 7 seconds**
+**Total: approximately 1.7 seconds** (most of which is Julia startup and package precompile load; the actual search runs in tens of milliseconds — see `benchmark/baseline.md`).
 
 ### Including anagrams
 
 ```bash
-Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:12 ( 1.18 ms/it)
+$ time julia --project --threads=auto -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
+Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:00
 [ Info: 831 combinations found
 
-real    0m15.158s
-user    2m9.641s
-sys     0m9.119s
+real    0m1.9s
 ```
 
-**Total: approximately 15 seconds**
+**Total: approximately 1.9 seconds**
 
 ## Inspecting the results
 
@@ -152,39 +128,19 @@ The ordering will likely differ between runs due to the use of multithreading.
 
 ## The impact of multithreading
 
-We take advantage of multithreading to speed things up. You'll need to start Julia with the `--threads=auto` (or whatever number of threads you want to use). If you're using VSCode or the like, you can set this via preferences.
-
-If we disable threading (i.e., don't specify `--threads` or set `--threads=1`), then performance suffers quite a bit (runtime increases dramatically, but scales less than linearly with the number of threads):
-
-### Excluding anagrams
+Threading is still wired up via [`Polyester.jl`](https://juliasimd.github.io/Polyester.jl/stable/) for both adjacency matrix construction and the clique search. With the current algorithm the search runs in tens of milliseconds and Julia startup dominates total wall-clock time, so threading has only a small effect for `n=5, order=5` on a single run. It does still help for adjacency matrix construction and for larger problem sizes.
 
 ```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main();'
-Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:01
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:00:50 ( 8.49 ms/it)
-[ Info: 540 combinations found
+[ Info: 538 combinations found
 
-real    0m54.032s
-user    0m53.995s
-sys     0m0.551s
-```
+real    0m1.5s
 
-**Total: approximately 54 seconds**
-
-### Including anagrams
-
-```bash
 $ time julia --project --threads=1 -e'using FiveLetterWorda; main(; exclude_anagrams=false);'
-Computing adjacency matrix... 100%|██████████████████████████████████████████████████| Time: 0:00:03
-Finding cliques... 100%|██████████████████████████████████████████████████| Time: 0:02:35 (15.33 ms/it)
 [ Info: 831 combinations found
 
-real    2m41.330s
-user    2m39.746s
-sys     0m2.108s
+real    0m2.1s
 ```
-
-**Total: approximately 2 minutes, 41 seconds**
 
 
 ## Julia quick start
