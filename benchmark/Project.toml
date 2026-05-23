@@ -1,0 +1,7 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+FiveLetterWorda = "40c3fe41-db9e-4ab5-a060-da035752fe98"
+
+[compat]
+BenchmarkTools = "1"
+julia = "1.10"
