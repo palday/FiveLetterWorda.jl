@@ -243,11 +243,14 @@ has no shared letters between words.
 If `exclude_anagrams=true`, then anagrams are removed from the word list
 before finding the result.
 
-You can specify the storage type of the adjaceny matrix with
-`adjacency_matrix_type`. `BitMatrix`, is very dense in memory,
-packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex per
-byte and is thus 8 times as large, but noticably faster.
-See also [`adjacency_matrix`](@ref)
+You can specify the storage type of the adjacency matrix with
+`adjacency_matrix_type`. `BitMatrix` is very dense in memory,
+packing eight vertices into a single byte. `Matrix{Bool}` stores one vertex
+per byte and is thus 8× as large but slightly faster to construct. The
+clique-finding algorithm converts whichever storage you pick to an
+internal chunked representation, so the choice no longer affects search
+performance — it only affects the construction cost and the size of the
+returned matrix. See also [`adjacency_matrix`](@ref).
 
 The `order` specifies the order of cliques to find and defaults to
 `fld(26, n)`, i.e. the maximal possible order for a given word length.
@@ -294,43 +297,75 @@ function write_tab(fname, wcs::Vector{Vector{String}})
     return nothing
 end
 
-# if we want to specialize on Matrix{Bool} later; could consider the same for BitArray...
-const BoolRowView =
-    SubArray{Bool, 1, Matrix{Bool}, Tuple{Base.Slice{Base.OneTo{Int}}, Int}, true}
+# Column-chunked bit representation of an adjacency matrix. The neighborhood
+# of vertex `j` is a `Cpc`-long view into `data` (`Cpc = cld(n, 64)` chunks
+# per column). Each column is 64-bit aligned, so chunk-level AND and
+# popcount can be applied directly without worrying about cross-column
+# boundary bits.
+struct ColumnChunks
+    data::Vector{UInt64}
+    Cpc::Int
+    n::Int
+end
 
-function num_shared_neighbors(r1, r2, start::Int=1)
-    # this is an efficient, non allocating way to
-    # compute the number of elements in the intersection
-    s = 0
-    length(r1) == length(r2) > 0 || throw(DimensionMismatch())
-    @simd for i in start:length(r1)
-        s += r1[i] * r2[i]
+ColumnChunks(n::Int) = ColumnChunks(zeros(UInt64, cld(n, 64) * n), cld(n, 64), n)
+
+function ColumnChunks(adj::AbstractMatrix{Bool})
+    n = size(adj, 2)
+    @assert size(adj, 1) == n
+    cc = ColumnChunks(n)
+    @batch per=core for j in 1:n
+        base = (j - 1) * cc.Cpc
+        @inbounds for i in 1:n
+            if adj[i, j]
+                cc.data[base + ((i - 1) >> 6) + 1] |= UInt64(1) << ((i - 1) & 63)
+            end
+        end
+    end
+    return cc
+end
+
+@inline column(cc::ColumnChunks, j::Int) =
+    view(cc.data, ((j - 1) * cc.Cpc + 1):(j * cc.Cpc))
+
+# Count set bits in `c1 .& c2`, restricted to bit positions >= start_bit
+# (1-based). `start_bit > n` is allowed and returns 0.
+function num_shared_neighbors_chunks(c1, c2, start_bit::Int)
+    Cpc = length(c1)
+    k0 = ((start_bit - 1) >> 6) + 1
+    k0 > Cpc && return 0
+    b0 = (start_bit - 1) & 63
+    # bits at positions >= b0 within the first chunk
+    mask0 = ~UInt64(0) << b0
+    s = count_ones(c1[k0] & c2[k0] & mask0)
+    @inbounds @simd for k in (k0 + 1):Cpc
+        s += count_ones(c1[k] & c2[k])
     end
     return s
 end
 
-function num_shared_neighbors(row::AbstractVector, start::Int=1)
-    # this is an efficient, non allocating way to
-    # compute the number of elements in the intersection
-    s = 0
-    @simd for i in start:length(row)
-        s += row[i]
+function shared_neighbors_chunks!(out, c1, c2)
+    @inbounds @simd for k in eachindex(out, c1, c2)
+        out[k] = c1[k] & c2[k]
     end
-    return s
+    return out
 end
 
-function shared_neighbors(r1, r2, start::Int=1)
-    result = similar(@view(r1[start:end]))
-    return shared_neighbors!(result, r1, r2, start)
-end
-
-function shared_neighbors!(result, r1, r2, start::Int=1)
-    s1 = @view(r1[start:end])
-    s2 = @view(r2[start:end])
-    @simd for i in eachindex(s1, s2, result)
-        result[i] = s1[i] * s2[i]
+# Invoke `f(i)` for every 1-based vertex index whose bit is set in `c`,
+# bounded by `n` (the logical vertex count).
+@inline function foreach_set_bit(f, c::AbstractVector{UInt64}, n::Int)
+    Cpc = length(c)
+    @inbounds for k in 1:Cpc
+        chunk = c[k]
+        while chunk != UInt64(0)
+            b = trailing_zeros(chunk)
+            i = (k - 1) * 64 + b + 1
+            i > n && return nothing
+            f(i)
+            chunk &= chunk - UInt64(1)
+        end
     end
-    return result
+    return nothing
 end
 
 """
@@ -367,54 +402,92 @@ function cliques!(results::Vector{Vector{String}}, adj, wordlist, order::Int=5; 
     adj = adj[deg_sort, deg_sort]
     wordlist = wordlist[deg_sort]
 
-    ncols = size(adj, 2)
-    p = Progress(ncols; showspeed=true, desc="Finding cliques...", enabled=progress, barlen=50)
-    @batch per=thread stride=true threadlocal=copy(results) for i in 1:ncols
-    # threadlocal = [copy(results)]
-    # for i in 1:ncols
-        ri = view(adj, :, i)
-        cliques!(threadlocal, adj, wordlist, order-2, ri, i)
+    cc = ColumnChunks(adj)
+    n = cc.n
+    Cpc = cc.Cpc
+    depth0 = order - 1
+
+    p = Progress(n; showspeed=true, desc="Finding cliques...", enabled=progress, barlen=50)
+    @batch per=thread stride=true threadlocal=(
+        results=copy(results),
+        bufs=[Vector{UInt64}(undef, Cpc) for _ in 1:max(depth0 - 1, 1)],
+    ) for i in 1:n
+        _clique_search!(
+            threadlocal.results, cc, wordlist, depth0, column(cc, i), (i,),
+            threadlocal.bufs,
+        )
         next!(p)
     end
 
     finish!(p)
-    sizehint!(results, sum(length, threadlocal))
-    for th in threadlocal
-        append!(results, th)
-    end
+    results = reduce(vcat, (t.results for t in threadlocal))
 
     progress && @info "$(length(results)) combinations found"
     return results
 end
 
-# this is an internal method that uses a recursive call to avoid
-# having explicit nested for loops
-function cliques!(results::Vector{Vector{String}}, adj, wordlist, depth, prev_row::AbstractVector, members...)
-    ncols = size(adj, 2)
-
-    offset = first(members)
-    row = similar(prev_row)
-    for i in (offset+1):ncols
-        prev_row[i] || continue
-        num_shared_neighbors(prev_row, view(adj, :, i), i) < depth && continue
-        # only allocate when you actually need it -- the extra computation
-        # is cheaper than the unnecessary allocations
-        row = shared_neighbors!(row, prev_row, view(adj, :, i))
-        # num_shared_neighbors(row, i) < depth && continue
-        if depth > 1
-            cliques!(results, adj, wordlist, depth-1, row, i, members...)
-        else
-            idx = [i, members...]
-            for w in view(wordlist, row)
-                rr = similar(wordlist, 5)
-                rr[1:4] .= view(wordlist, idx)
-                rr[5] = w
-                push!(results, rr)
-            end
+# Internal recursive worker. `members` is a small NTuple of already-picked
+# vertex indices (so K is the count picked so far); `depth` counts the
+# number of additional vertices still to pick. We branch on the next
+# vertex `i > last(members)` that is still in the intersection
+# `prev_row` of all picked neighborhoods. `bufs` is a stack of pre-
+# allocated chunk buffers, indexed by the remaining depth.
+function _clique_search!(
+    results::Vector{Vector{String}},
+    cc::ColumnChunks,
+    wordlist,
+    depth::Int,
+    prev_row::AbstractVector{UInt64},
+    members::NTuple{K,Int},
+    bufs::Vector{Vector{UInt64}},
+) where {K}
+    n = cc.n
+    offset = members[K]
+    if depth == 1
+        # Base case: every set bit in `prev_row` at position > offset is a
+        # valid completion of the clique.
+        wlist = wordlist
+        m = members
+        foreach_set_bit(prev_row, n) do i
+            i > offset || return nothing
+            push!(results, _emit(wlist, m, i))
+            return nothing
         end
+        return results
     end
-
+    row = bufs[depth - 1]
+    @inbounds for i in (offset + 1):n
+        # `prev_row[i]` set?
+        if (prev_row[((i - 1) >> 6) + 1] >> ((i - 1) & 63)) & UInt64(1) == 0
+            continue
+        end
+        ci = column(cc, i)
+        num_shared_neighbors_chunks(prev_row, ci, i) < depth - 1 && continue
+        shared_neighbors_chunks!(row, prev_row, ci)
+        _clique_search!(results, cc, wordlist, depth - 1, row, (members..., i), bufs)
+    end
     return results
+end
+
+# Build a clique result vector from `(members..., last)` without
+# intermediate index allocations.
+@inline function _emit(wordlist, members::NTuple{K,Int}, last::Int) where {K}
+    out = Vector{eltype(wordlist)}(undef, K + 1)
+    @inbounds for k in 1:K
+        out[k] = wordlist[members[k]]
+    end
+    @inbounds out[K + 1] = wordlist[last]
+    return out
+end
+
+# A 26-bit letter set as a UInt32: bit (c - 'a') is set iff `c` is in the
+# word. Disjointness of two words reduces to `(m1 & m2) == 0`.
+function letter_mask(w::AbstractString)
+    m = UInt32(0)
+    for c in w
+        m |= UInt32(1) << (UInt32(c) - UInt32('a'))
+    end
+    return m
 end
 
 """
@@ -428,10 +501,12 @@ can be slower to read individual elements. Another alternative is
 elements but requires 8 times the storage space.
 """
 function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix; progress=true)
-    adj = T(undef, length(words), length(words))
+    nw = length(words)
+    adj = T(undef, nw, nw)
     fill!(adj, false) # init the diagonal; everything else is overwritten
-    @showprogress enabled=progress barlen=50 "Computing adjacency matrix..." for i in 1:length(words), j in 1:(i-1)
-        adj[j, i] = adj[i, j] = good_pair(words[i], words[j])
+    masks = letter_mask.(words)
+    @showprogress enabled=progress barlen=50 "Computing adjacency matrix..." for i in 1:nw, j in 1:(i-1)
+        adj[j, i] = adj[i, j] = (masks[i] & masks[j]) == 0
     end
     # why not make this Symmetric()? well, we don't do anything with methods
     # specialized on Symmetric and the view-based access pattern is slower
@@ -440,15 +515,18 @@ function adjacency_matrix(words, T::Type{<:AbstractMatrix}=BitMatrix; progress=t
 end
 
 function adjacency_matrix(words, T::Type{Matrix{Bool}}; progress=true)
-    # this method is specialized with a threading improvement and additional
-    # broadcasting that works nicely for this storage type
+    # this method is specialized with a threading improvement that works
+    # nicely for this storage type
     nw = length(words)
     adj = T(undef, nw, nw)
     fill!(adj, false) # init the diagonal; everything else is overwritten
+    masks = letter_mask.(words)
     p = Progress(nw; showspeed=false, desc="Computing adjacency matrix...", enabled=progress, barlen=50)
     @batch per=core for i in 1:nw
-        j = 1:(i-1)
-        adj[j, i] .= adj[i, j] .= good_pair.(Ref(words[i]), words[j])
+        mi = masks[i]
+        @inbounds for j in 1:(i-1)
+            adj[j, i] = adj[i, j] = (mi & masks[j]) == 0
+        end
         next!(p)
     end
     finish!(p)

@@ -16,9 +16,15 @@ canon(combos::AbstractVector{<:AbstractVector{<:AbstractString}}) =
     end
 
     @testset "Regression: combination counts" begin
-        # n=5, order=5 — the canonical problem
+        # n=5, order=5 — the canonical problem. 538 matches Matt Parker's
+        # original count; previous versions of this package reported 540
+        # because the recursive base case enumerated set bits in the
+        # neighborhood intersection without enforcing a strict index
+        # ordering on the final pick, leading to 2 cliques being
+        # emitted twice. The current implementation walks every clique
+        # in strictly increasing index order and emits each exactly once.
         result_na = main(5; exclude_anagrams=true, progress=false)
-        @test length(result_na.combinations) == 540
+        @test length(result_na.combinations) == 538
 
         result_wa = main(5; exclude_anagrams=false, progress=false)
         @test length(result_wa.combinations) == 831
@@ -43,6 +49,6 @@ canon(combos::AbstractVector{<:AbstractVector{<:AbstractString}}) =
         c_bool = cliques(adj_bool, words, 5; progress=false)
         c_bit = cliques(adj_bit, words, 5; progress=false)
         @test canon(c_bool) == canon(c_bit)
-        @test length(c_bool) == 540
+        @test length(c_bool) == 538
     end
 end
